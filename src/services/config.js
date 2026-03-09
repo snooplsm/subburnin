@@ -16,7 +16,8 @@ const DEFAULTS = {
   caption_highlight_bg:    '#000000',
   caption_outline_color:   '#000000',
   caption_font_size:       64,
-  caption_font_family:     'Roboto'
+  caption_font_family:     'Roboto',
+  caption_font_variant:    'regular'
 };
 
 function migrateLegacyModelOverride(config) {

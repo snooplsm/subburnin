@@ -435,6 +435,188 @@ main {
   border-color: var(--text-muted);
 }
 
+.font-family-wrap {
+  position: relative;
+}
+
+.font-family-menu {
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  display: block;
+}
+
+.font-family-menu.open {
+  display: block;
+}
+
+.font-family-option {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.font-family-option:last-child {
+  border-bottom: none;
+}
+
+.font-no-results {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.font-option-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.font-family-name {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.font-family-option mark {
+  background: color-mix(in srgb, var(--accent-bg) 20%, transparent);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.font-option-sample {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.font-family-option.active,
+.font-family-option:hover {
+  background: color-mix(in srgb, var(--accent-bg) 14%, transparent);
+}
+
+.font-source-pill {
+  font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.font-controls {
+  display: flex;
+  gap: 8px;
+}
+
+#download-font-btn,
+#refresh-font-index-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text);
+  transition: background 0.2s;
+}
+
+#download-font-btn:hover,
+#refresh-font-index-btn:hover {
+  background: var(--surface2);
+}
+
+#download-font-btn:disabled,
+#refresh-font-index-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.font-popup {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--overlay) 80%, transparent);
+  z-index: 220;
+}
+
+.font-popup.open {
+  display: flex;
+}
+
+.font-popup-card {
+  width: min(680px, calc(100vw - 40px));
+  max-height: min(70vh, 680px);
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.font-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.font-popup-head h3 {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+#font-popup-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+#font-popup-close:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+#font-popup-search {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+#font-popup-search:focus {
+  border-color: var(--text-muted);
+}
+
 .setting-hint {
   font-size: 11px;
   color: var(--text-dim);

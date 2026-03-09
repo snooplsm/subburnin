@@ -14,6 +14,13 @@ const { extractAudio, burnSubBurnIn } = require('./services/ffmpeg');
 const { transcribe } = require('./services/whisper');
 const { segmentsToAss } = require('./services/converter');
 const { isSetupComplete, checkDependencies, runSetup, downloadModel, getModelPath, getModelFilename } = require('./services/setup');
+const {
+  FONTS_DIR,
+  getGoogleFontsIndex,
+  refreshGoogleFontsIndex,
+  listDownloadedFonts,
+  downloadGoogleFont
+} = require('./services/fonts');
 
 let activeDownloadController = null;
 let activeSetupController    = null;
@@ -173,6 +180,26 @@ ipcMain.handle('ipc:get-config', () => {
 
 ipcMain.handle('ipc:set-config', (event, partial) => setConfig(partial));
 
+// --- IPC: Fonts ---
+
+ipcMain.handle('ipc:get-font-index', async (event, forceRefresh = false) => {
+  const index = forceRefresh
+    ? await refreshGoogleFontsIndex()
+    : await getGoogleFontsIndex();
+  return {
+    fetchedAt: index.fetchedAt,
+    fonts: index.fonts
+  };
+});
+
+ipcMain.handle('ipc:get-downloaded-fonts', () => {
+  return listDownloadedFonts();
+});
+
+ipcMain.handle('ipc:download-google-font', async (event, family, variant = 'regular') => {
+  return downloadGoogleFont(family, 'latin', variant);
+});
+
 // --- IPC: Download model ---
 
 ipcMain.handle('ipc:download-model', async (event, size, language) => {
@@ -254,7 +281,9 @@ ipcMain.handle('ipc:process-video', async (event, videoPath) => {
       highlightColor: config.caption_highlight_color || '#CFA84E',
       highlightBg:    config.caption_highlight_bg    || '#000000',
       outlineColor:   config.caption_outline_color   || '#000000',
-      fontSize:       config.caption_font_size       || 64
+      fontSize:       config.caption_font_size       || 64,
+      fontFamily:     config.caption_font_family     || 'Roboto',
+      fontVariant:    config.caption_font_variant    || 'regular'
     });
     const assPath = path.join(tmpDir, 'subburnin.ass');
     fs.writeFileSync(assPath, assContent, 'utf8');
@@ -265,7 +294,7 @@ ipcMain.handle('ipc:process-video', async (event, videoPath) => {
 
     // Step 4: Burn subburnin
     sendProgress({ stage: 'burning', percent: 80, message: 'Burning subburnin onto video...' });
-    await burnSubBurnIn(videoPath, assPath, outputVideoPath, sendProgress);
+    await burnSubBurnIn(videoPath, assPath, outputVideoPath, sendProgress, { fontsDir: FONTS_DIR });
 
     sendProgress({ stage: 'done', percent: 100, message: 'Done!', outputPath: outputVideoPath });
     return { success: true, outputPath: outputVideoPath };

@@ -35,18 +35,26 @@ function extractAudio(videoPath, outputWavPath, onProgress) {
   });
 }
 
-function burnSubBurnIn(videoPath, assPath, outputVideoPath, onProgress) {
+function escapeFilterPath(filePath) {
+  return filePath
+    .replace(/\\/g, '/')       // normalize to forward slashes first
+    .replace(/:/g, '\\:')      // escape colons (Windows drive letters)
+    .replace(/'/g, "\\'");     // escape single quotes
+}
+
+function burnSubBurnIn(videoPath, assPath, outputVideoPath, onProgress, options = {}) {
   return new Promise((resolve, reject) => {
-    // Escape path for ffmpeg filter graph syntax (colons, backslashes, quotes)
-    const escaped = assPath
-      .replace(/\\/g, '/')       // normalise to forward slashes first
-      .replace(/:/g, '\\:')      // escape colons (Windows drive letters)
-      .replace(/'/g, "\\'");     // escape single quotes
+    const escapedAss = escapeFilterPath(assPath);
+    let assFilter = `ass=filename='${escapedAss}'`;
+    if (options.fontsDir) {
+      const escapedFontsDir = escapeFilterPath(options.fontsDir);
+      assFilter += `:fontsdir='${escapedFontsDir}'`;
+    }
 
     const args = [
       '-y',
       '-i', videoPath,
-      '-vf', `ass=filename='${escaped}'`,
+      '-vf', assFilter,
       '-c:v', 'libx264',
       '-crf', '18',
       '-c:a', 'copy',

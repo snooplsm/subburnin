@@ -26,6 +26,15 @@ const captionHighlightColorInput = document.getElementById('caption-highlight-co
 const captionHighlightBgInput    = document.getElementById('caption-highlight-bg');
 const captionOutlineColorInput   = document.getElementById('caption-outline-color');
 const captionFontSizeInput       = document.getElementById('caption-font-size');
+const captionFontFamilyInput     = document.getElementById('caption-font-family');
+const captionFontVariantInput    = document.getElementById('caption-font-variant');
+const fontFamilyMenu             = document.getElementById('font-family-menu');
+const fontFamilyStatus           = document.getElementById('font-family-status');
+const downloadFontBtn            = document.getElementById('download-font-btn');
+const refreshFontIndexBtn        = document.getElementById('refresh-font-index-btn');
+const fontPopup                  = document.getElementById('font-popup');
+const fontPopupSearch            = document.getElementById('font-popup-search');
+const fontPopupClose             = document.getElementById('font-popup-close');
 
 // Bidirectional sync: native color picker ↔ hex text field
 const COLOR_PAIRS = [
@@ -62,10 +71,380 @@ COLOR_PAIRS.forEach(({ pickId, hexId }) => {
   });
 });
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeFontName(fontName) {
+  return String(fontName || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeVariant(variant) {
+  return String(variant || 'regular').trim().toLowerCase();
+}
+
+function parseVariant(variant) {
+  const v = normalizeVariant(variant);
+  if (v === 'regular') return { weight: 400, italic: false };
+  if (v === 'italic') return { weight: 400, italic: true };
+  const m = v.match(/^(\d{3})(italic)?$/);
+  if (m) return { weight: parseInt(m[1], 10), italic: Boolean(m[2]) };
+  return { weight: 400, italic: false };
+}
+
+function variantLabel(variant) {
+  const v = normalizeVariant(variant);
+  if (v === 'regular') return 'Regular (400)';
+  if (v === 'italic') return 'Regular Italic (400)';
+  const m = v.match(/^(\d{3})(italic)?$/);
+  if (!m) return variant;
+  const weight = parseInt(m[1], 10);
+  const names = {
+    100: 'Thin',
+    200: 'Extra Light',
+    300: 'Light',
+    400: 'Regular',
+    500: 'Medium',
+    600: 'Semi Bold',
+    700: 'Bold',
+    800: 'Extra Bold',
+    900: 'Black'
+  };
+  const label = `${names[weight] || weight} (${weight})`;
+  return m[2] ? `${label} Italic` : label;
+}
+
+function buildSuggestionLabel(family, query) {
+  const safeFamily = escapeHtml(family);
+  if (!query) return safeFamily;
+
+  const idx = family.toLowerCase().indexOf(query.toLowerCase());
+  if (idx < 0) return safeFamily;
+
+  const start = escapeHtml(family.slice(0, idx));
+  const hit = escapeHtml(family.slice(idx, idx + query.length));
+  const end = escapeHtml(family.slice(idx + query.length));
+  return `${start}<mark>${hit}</mark>${end}`;
+}
+
+function escapeAttr(value) {
+  return String(value).replace(/"/g, '&quot;');
+}
+
+function detectLocalFonts() {
+  if (!document.fonts || typeof document.fonts.check !== 'function') return ['Roboto'];
+  const available = LOCAL_FONT_CANDIDATES.filter((family) => document.fonts.check(`16px "${family}"`));
+  if (!available.includes('Roboto')) available.unshift('Roboto');
+  return available;
+}
+
+function uniqueFamilies(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const key = item.family.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function getFontSources() {
+  const local = localFontFamilies.map((family) => ({ family, source: 'local' }));
+  const downloaded = downloadedFontFamilies.map((entry) => ({ family: entry.family, source: 'downloaded' }));
+  const google = googleFontFamilies.map((family) => ({ family, source: 'google' }));
+  return uniqueFamilies([...downloaded, ...local, ...google]);
+}
+
+function getVariantOptionsForFamily(family) {
+  const normalized = normalizeFontName(family).toLowerCase();
+  const googleVariants = googleFontVariantsByFamily.get(normalized);
+  if (googleVariants && googleVariants.length > 0) return googleVariants;
+  return ['regular', '500', '700', '900', 'italic'];
+}
+
+function populateVariantSelect(preferredVariant) {
+  const family = normalizeFontName(captionFontFamilyInput.value);
+  const options = getVariantOptionsForFamily(family);
+  const preferred = normalizeVariant(preferredVariant || captionFontVariantInput.value || 'regular');
+  const selected = options.includes(preferred) ? preferred : (options.includes('regular') ? 'regular' : options[0]);
+
+  captionFontVariantInput.innerHTML = options.map((variant) =>
+    `<option value="${escapeAttr(variant)}">${escapeHtml(variantLabel(variant))}</option>`
+  ).join('');
+  captionFontVariantInput.value = selected;
+}
+
+function rankFontSuggestion(a, b, query) {
+  if (!query) return a.family.localeCompare(b.family);
+  const aName = a.family.toLowerCase();
+  const bName = b.family.toLowerCase();
+  const q = query.toLowerCase();
+  const aStarts = aName.startsWith(q) ? 0 : 1;
+  const bStarts = bName.startsWith(q) ? 0 : 1;
+  if (aStarts !== bStarts) return aStarts - bStarts;
+  const aIdx = aName.indexOf(q);
+  const bIdx = bName.indexOf(q);
+  if (aIdx !== bIdx) return aIdx - bIdx;
+  return a.family.localeCompare(b.family);
+}
+
+function closeFontMenu() {
+  fontPopup.classList.remove('open');
+  fontFamilyMenu.innerHTML = '';
+  fontSuggestions = [];
+  activeFontSuggestionIndex = 0;
+}
+
+function openFontMenu() {
+  if (fontSuggestions.length === 0) {
+    closeFontMenu();
+    return;
+  }
+}
+
+function getFontQuery() {
+  if (fontPopup.classList.contains('open')) {
+    return normalizeFontName(fontPopupSearch.value);
+  }
+  return normalizeFontName(captionFontFamilyInput.value);
+}
+
+function renderFontSuggestions() {
+  const query = getFontQuery();
+  const sources = getFontSources();
+  const filtered = query
+    ? sources.filter((item) => item.family.toLowerCase().includes(query.toLowerCase()))
+    : sources;
+
+  fontSuggestions = filtered
+    .sort((a, b) => rankFontSuggestion(a, b, query))
+    .slice(0, 10);
+
+  if (fontSuggestions.length === 0) {
+    fontFamilyMenu.innerHTML = '<div class="font-no-results">No matching fonts</div>';
+    return;
+  }
+
+  if (activeFontSuggestionIndex >= fontSuggestions.length) {
+    activeFontSuggestionIndex = 0;
+  }
+
+  for (const item of fontSuggestions) {
+    ensurePreviewWebFont(item.family);
+  }
+
+  const variantMeta = parseVariant(captionFontVariantInput.value || 'regular');
+  const sampleWeight = variantMeta.weight || 400;
+  const sampleStyle = variantMeta.italic ? 'italic' : 'normal';
+
+  fontFamilyMenu.innerHTML = fontSuggestions.map((item, idx) => `
+    <button
+      class="font-family-option${idx === activeFontSuggestionIndex ? ' active' : ''}"
+      type="button"
+      data-family="${escapeHtml(item.family)}"
+    >
+      <span class="font-option-top">
+        <span class="font-family-name">${buildSuggestionLabel(item.family, query)}</span>
+        <span class="font-source-pill">${item.source}</span>
+      </span>
+      <span
+        class="font-option-sample"
+        style="font-family: &quot;${escapeAttr(item.family)}&quot;, Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-weight: ${sampleWeight}; font-style: ${sampleStyle};"
+      >The quick brown fox jumps over the lazy dog 0123456789</span>
+    </button>
+  `).join('');
+
+  openFontMenu();
+}
+
+function applyFontSuggestionByIndex(index) {
+  if (!fontSuggestions[index]) return;
+  captionFontFamilyInput.value = fontSuggestions[index].family;
+  fontPopupSearch.value = fontSuggestions[index].family;
+  populateVariantSelect();
+  closeFontMenu();
+  refreshFontPreview();
+}
+
+function updateFontStatus(text, isError = false) {
+  fontFamilyStatus.textContent = text;
+  fontFamilyStatus.style.color = isError ? 'var(--error)' : '';
+}
+
+function selectedFontHasGoogleEntry(fontFamily) {
+  const normalized = normalizeFontName(fontFamily).toLowerCase();
+  return googleFontVariantsByFamily.has(normalized);
+}
+
+function selectedFontIsDownloaded(fontFamily, variant = null) {
+  const normalizedFamily = normalizeFontName(fontFamily).toLowerCase();
+  const normalizedVariant = normalizeVariant(variant || captionFontVariantInput.value || 'regular');
+  return downloadedFontFamilies.some((entry) =>
+    entry.family.toLowerCase() === normalizedFamily && normalizeVariant(entry.variant) === normalizedVariant
+  );
+}
+
+function selectedFontIsLocal(fontFamily) {
+  const normalized = fontFamily.toLowerCase();
+  return localFontFamilies.some((family) => family.toLowerCase() === normalized);
+}
+
+function getCanonicalGoogleFamily(fontFamily) {
+  const normalized = normalizeFontName(fontFamily).toLowerCase();
+  return googleFontFamilies.find((family) => family.toLowerCase() === normalized) || null;
+}
+
+function setPreviewFont(fontFamily) {
+  // Popup rows render live font samples; keep hook for download flow.
+  return normalizeFontName(fontFamily) || 'Roboto';
+}
+
+async function downloadFontFamily(family, { forPreview = false, variant = null } = {}) {
+  const chosenVariant = normalizeVariant(variant || captionFontVariantInput.value || 'regular');
+  const normalized = `${family.toLowerCase()}::${chosenVariant}`;
+  if (inFlightPreviewDownloads.has(normalized)) return;
+  inFlightPreviewDownloads.add(normalized);
+
+  if (forPreview) {
+    updateFontStatus(`Downloading "${family}" for preview...`);
+  } else {
+    updateFontStatus(`Downloading "${family}"...`);
+  }
+
+  try {
+    const result = await window.subburnin.downloadGoogleFont(family, chosenVariant);
+    downloadedFontFamilies = await window.subburnin.getDownloadedFonts();
+    failedPreviewDownloads.delete(normalized);
+    updateFontStatus(`Downloaded ${result.family} (${result.variant}).`);
+    renderFontSuggestions();
+    setPreviewFont(family);
+  } catch (err) {
+    if (forPreview) failedPreviewDownloads.add(normalized);
+    updateFontStatus(`Download failed: ${err.message}`, true);
+  } finally {
+    inFlightPreviewDownloads.delete(normalized);
+    updateFontButtonsState();
+  }
+}
+
+function refreshFontPreview({ allowAutoDownload = true } = {}) {
+  const typed = normalizeFontName(captionFontFamilyInput.value) || 'Roboto';
+  setPreviewFont(typed);
+
+  if (previewDebounceTimer) {
+    clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = null;
+  }
+
+  if (!allowAutoDownload) return;
+
+  const canonical = getCanonicalGoogleFamily(typed);
+  const variant = normalizeVariant(captionFontVariantInput.value || 'regular');
+  if (!canonical) return;
+  if (selectedFontIsDownloaded(canonical, variant) || selectedFontIsLocal(canonical)) return;
+
+  const key = `${canonical.toLowerCase()}::${variant}`;
+  if (failedPreviewDownloads.has(key)) return;
+
+  previewDebounceTimer = setTimeout(() => {
+    downloadFontFamily(canonical, { forPreview: true, variant });
+  }, 400);
+}
+
+function openFontPopup() {
+  fontPopupSearch.value = captionFontFamilyInput.value;
+  renderFontSuggestions();
+  fontPopup.classList.add('open');
+  setTimeout(() => fontPopupSearch.focus(), 0);
+}
+
+function updateFontButtonsState() {
+  const family = normalizeFontName(captionFontFamilyInput.value);
+  const variant = normalizeVariant(captionFontVariantInput.value || 'regular');
+  const isBusy = family && inFlightPreviewDownloads.has(`${family.toLowerCase()}::${variant}`);
+  const canDownload = family && !isBusy && selectedFontHasGoogleEntry(family) && !selectedFontIsDownloaded(family, variant);
+  downloadFontBtn.disabled = !canDownload;
+}
+
+async function loadFontSources(forceRefresh = false) {
+  localFontFamilies = detectLocalFonts();
+
+  try {
+    const [index, downloaded] = await Promise.all([
+      window.subburnin.getFontIndex(forceRefresh),
+      window.subburnin.getDownloadedFonts()
+    ]);
+
+    googleFontFamilies = (index.fonts || []).map((entry) => entry.family).filter(Boolean);
+    googleFontVariantsByFamily = new Map(
+      (index.fonts || [])
+        .filter((entry) => entry && entry.family)
+        .map((entry) => [entry.family.toLowerCase(), (entry.variants || ['regular']).map(normalizeVariant)])
+    );
+    downloadedFontFamilies = Array.isArray(downloaded)
+      ? downloaded.filter((entry) => entry && entry.family).map((entry) => ({
+          family: entry.family,
+          variant: normalizeVariant(entry.variant || 'regular')
+        }))
+      : [];
+
+    const date = index.fetchedAt
+      ? new Date(index.fetchedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+      : 'unknown';
+    updateFontStatus(`Default: Roboto. Google index: ${googleFontFamilies.length} fonts (updated ${date}).`);
+  } catch (err) {
+    googleFontFamilies = ['Roboto'];
+    downloadedFontFamilies = [];
+    updateFontStatus(`Could not load Google index: ${err.message}`, true);
+  }
+
+  renderFontSuggestions();
+  populateVariantSelect();
+  updateFontButtonsState();
+  refreshFontPreview({ allowAutoDownload: false });
+}
+
 const STEPS = ['extracting', 'transcribing', 'converting', 'burning'];
 
 let currentOutputPath = null;
 let currentTheme = 'dark';
+let googleFontFamilies = [];
+let downloadedFontFamilies = [];
+let localFontFamilies = [];
+let fontSuggestions = [];
+let activeFontSuggestionIndex = 0;
+let previewDebounceTimer = null;
+const failedPreviewDownloads = new Set();
+const inFlightPreviewDownloads = new Set();
+const loadedPreviewWebFonts = new Set();
+let googleFontVariantsByFamily = new Map();
+
+const LOCAL_FONT_CANDIDATES = [
+  'Roboto', 'Arial', 'Helvetica', 'Helvetica Neue', 'Verdana', 'Tahoma',
+  'Trebuchet MS', 'Times New Roman', 'Georgia', 'Garamond', 'Palatino',
+  'Courier New', 'Monaco', 'Menlo', 'Consolas', 'Segoe UI', 'SF Pro Display'
+];
+
+function ensurePreviewWebFont(family) {
+  const normalized = family.toLowerCase();
+  if (!selectedFontHasGoogleEntry(family)) return;
+  if (loadedPreviewWebFonts.has(normalized)) return;
+
+  const familyQuery = encodeURIComponent(family).replace(/%20/g, '+');
+  const href = `https://fonts.googleapis.com/css2?family=${familyQuery}:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,400;1,700&display=swap`;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = href;
+  document.head.appendChild(link);
+  loadedPreviewWebFonts.add(normalized);
+}
 
 // ========================================
 // Theme
@@ -299,6 +678,8 @@ async function openSettings() {
   captionHighlightBgInput.value    = config.caption_highlight_bg    || '#000000';
   captionOutlineColorInput.value   = config.caption_outline_color   || '#000000';
   captionFontSizeInput.value       = config.caption_font_size       || 64;
+  captionFontFamilyInput.value     = config.caption_font_family     || 'Roboto';
+  captionFontVariantInput.value    = normalizeVariant(config.caption_font_variant || 'regular');
 
   // Sync color pickers to current hex values
   COLOR_PAIRS.forEach(({ pickId, hexId }) => {
@@ -310,6 +691,9 @@ async function openSettings() {
   });
 
   updateModelStatus(config.model_downloaded, config.whisper_model_size, config.whisper_language);
+  await loadFontSources();
+  populateVariantSelect(captionFontVariantInput.value);
+  renderFontSuggestions();
 
   settingsPanel.classList.add('open');
   overlay.classList.add('visible');
@@ -318,6 +702,8 @@ async function openSettings() {
 function closeSettings() {
   settingsPanel.classList.remove('open');
   overlay.classList.remove('visible');
+  closeFontMenu();
+  if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
 }
 
 function updateModelStatus(downloaded, size, language) {
@@ -420,9 +806,116 @@ saveSettingsBtn.addEventListener('click', async () => {
     caption_highlight_color: captionHighlightColorInput.value,
     caption_highlight_bg:    captionHighlightBgInput.value,
     caption_outline_color:   captionOutlineColorInput.value,
-    caption_font_size:       parseInt(captionFontSizeInput.value, 10) || 64
+    caption_font_size:       parseInt(captionFontSizeInput.value, 10) || 64,
+    caption_font_family:     normalizeFontName(captionFontFamilyInput.value) || 'Roboto',
+    caption_font_variant:    normalizeVariant(captionFontVariantInput.value || 'regular')
   });
   closeSettings();
+});
+
+captionFontFamilyInput.addEventListener('focus', () => {
+  openFontPopup();
+});
+
+captionFontFamilyInput.addEventListener('click', () => {
+  openFontPopup();
+});
+
+captionFontFamilyInput.addEventListener('input', () => {
+  fontPopupSearch.value = captionFontFamilyInput.value;
+  populateVariantSelect();
+  renderFontSuggestions();
+  updateFontButtonsState();
+  refreshFontPreview();
+});
+
+function handleFontPickerKeydown(event) {
+  if (!fontPopup.classList.contains('open') || fontSuggestions.length === 0) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+    }
+    return;
+  }
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    activeFontSuggestionIndex = (activeFontSuggestionIndex + 1) % fontSuggestions.length;
+    renderFontSuggestions();
+    return;
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    activeFontSuggestionIndex = (activeFontSuggestionIndex - 1 + fontSuggestions.length) % fontSuggestions.length;
+    renderFontSuggestions();
+    return;
+  }
+
+  if (event.key === 'Enter' || event.key === 'Tab') {
+    event.preventDefault();
+    applyFontSuggestionByIndex(activeFontSuggestionIndex);
+    updateFontButtonsState();
+    return;
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeFontMenu();
+  }
+}
+
+captionFontFamilyInput.addEventListener('keydown', handleFontPickerKeydown);
+fontPopupSearch.addEventListener('keydown', handleFontPickerKeydown);
+
+fontPopupSearch.addEventListener('input', () => {
+  captionFontFamilyInput.value = normalizeFontName(fontPopupSearch.value);
+  populateVariantSelect();
+  renderFontSuggestions();
+  updateFontButtonsState();
+  refreshFontPreview();
+});
+
+fontPopupClose.addEventListener('click', closeFontMenu);
+fontPopup.addEventListener('mousedown', (event) => {
+  if (event.target === fontPopup) closeFontMenu();
+});
+
+fontFamilyMenu.addEventListener('mousedown', (event) => {
+  const btn = event.target.closest('.font-family-option');
+  if (!btn) return;
+  event.preventDefault();
+  const family = btn.getAttribute('data-family');
+  captionFontFamilyInput.value = family || captionFontFamilyInput.value;
+  fontPopupSearch.value = captionFontFamilyInput.value;
+  populateVariantSelect();
+  closeFontMenu();
+  updateFontButtonsState();
+  refreshFontPreview();
+});
+
+captionFontVariantInput.addEventListener('change', () => {
+  renderFontSuggestions();
+  updateFontButtonsState();
+  refreshFontPreview();
+});
+
+refreshFontIndexBtn.addEventListener('click', async () => {
+  refreshFontIndexBtn.disabled = true;
+  updateFontStatus('Refreshing Google Fonts index...');
+  try {
+    await loadFontSources(true);
+  } catch (err) {
+    updateFontStatus(`Could not refresh index: ${err.message}`, true);
+  } finally {
+    refreshFontIndexBtn.disabled = false;
+  }
+});
+
+downloadFontBtn.addEventListener('click', async () => {
+  const family = normalizeFontName(captionFontFamilyInput.value);
+  if (!family) return;
+  await downloadFontFamily(family, { variant: captionFontVariantInput.value });
+  refreshFontPreview({ allowAutoDownload: false });
 });
 
 // ========================================

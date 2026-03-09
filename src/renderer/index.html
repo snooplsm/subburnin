@@ -153,8 +153,32 @@
       <input type="number" id="caption-font-size" min="24" max="120" placeholder="64" />
     </div>
 
+    <div class="setting-group">
+      <label>Font Family</label>
+      <div class="font-family-wrap">
+        <input type="text" id="caption-font-family" placeholder="Roboto" autocomplete="off" spellcheck="false" />
+      </div>
+      <select id="caption-font-variant"></select>
+      <div class="font-controls">
+        <button id="download-font-btn" type="button">Download Font</button>
+        <button id="refresh-font-index-btn" type="button">Refresh Index</button>
+      </div>
+      <div class="setting-hint" id="font-family-status">Default: Roboto</div>
+    </div>
+
     <div class="settings-buttons">
       <button id="save-settings-btn">Save Settings</button>
+    </div>
+  </div>
+
+  <div id="font-popup" class="font-popup">
+    <div class="font-popup-card">
+      <div class="font-popup-head">
+        <h3>Choose Font</h3>
+        <button id="font-popup-close" type="button" title="Close">✕</button>
+      </div>
+      <input type="text" id="font-popup-search" placeholder="Search fonts..." autocomplete="off" spellcheck="false" />
+      <div id="font-family-menu" class="font-family-menu"></div>
     </div>
   </div>
 

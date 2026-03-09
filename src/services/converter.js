@@ -13,6 +13,7 @@
 
 // Pill border width in pixels (at PlayResX 1920). Scales with font size.
 const HIGHLIGHT_BORD = 18;
+const MIN_WORD_DURATION_MS = 70;
 
 // Patterns whisper generates for music, noise, silence — skip these segments entirely
 const HALLUCINATION_RE = /^\s*[\[(]?\s*(music|song|singing|applause|laughter|noise|silence|background|instrumental|inaudible|blank.?audio|no.?speech|♪|🎵)[^\])\n]*[\])]?\s*$/i;
@@ -39,7 +40,20 @@ function hexToAss(hex) {
   return `&H${aa}${b}${g}${r}&`;
 }
 
-function buildAssHeader(textColor, outlineColor, fontSize) {
+function sanitizeAssFontName(fontFamily) {
+  return String(fontFamily || 'Roboto').replace(/,/g, ' ').trim() || 'Roboto';
+}
+
+function parseVariant(variant) {
+  const v = String(variant || 'regular').toLowerCase();
+  if (v === 'regular') return { weight: 400, italic: false };
+  if (v === 'italic') return { weight: 400, italic: true };
+  const m = v.match(/^(\d{3})(italic)?$/);
+  if (m) return { weight: parseInt(m[1], 10), italic: Boolean(m[2]) };
+  return { weight: 400, italic: false };
+}
+
+function buildAssHeader(textColor, outlineColor, fontSize, fontFamily, fontVariant) {
   const primaryAss = `&H00${textColor.replace('#', '').toUpperCase()
     .replace(/(..)(..)(..)/, '$3$2$1')}&`;
   const outlineAss = `&H00${outlineColor.replace('#', '').toUpperCase()
@@ -47,6 +61,10 @@ function buildAssHeader(textColor, outlineColor, fontSize) {
   // Use hexToAss for correctness
   const primaryFull = hexToAss(textColor);
   const outlineFull = hexToAss(outlineColor);
+  const assFontFamily = sanitizeAssFontName(fontFamily);
+  const variant = parseVariant(fontVariant);
+  const bold = variant.weight >= 700 ? -1 : 0;
+  const italic = variant.italic ? -1 : 0;
   return `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1920
@@ -55,7 +73,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Roboto,${fontSize},${primaryFull},${primaryFull},${outlineFull},${outlineFull},0,0,0,0,100,100,0,0,1,2,2,2,20,20,50,1
+Style: Default,${assFontFamily},${fontSize},${primaryFull},${primaryFull},${outlineFull},${outlineFull},${bold},${italic},0,0,100,100,0,0,1,2,2,2,20,20,50,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -109,6 +127,51 @@ function mergeTokensIntoWords(tokens) {
 }
 
 /**
+ * Normalize word timing inside a segment.
+ *
+ * Whisper word offsets near the beginning can be noisy (too early, overlapping,
+ * zero-length). This pass enforces:
+ * - starts never move backward
+ * - starts/ends stay within segment bounds
+ * - each word has a minimum visible duration
+ */
+function normalizeWordTimings(words, segStart, segEnd) {
+  const out = [];
+  let prevEnd = segStart;
+
+  for (let i = 0; i < words.length; i++) {
+    const rawStart = Number(words[i].offsets.from);
+    const nextRawStart = i + 1 < words.length ? Number(words[i + 1].offsets.from) : NaN;
+    const rawTo = Number(words[i].offsets.to);
+
+    const startBase = Number.isFinite(rawStart) ? rawStart : prevEnd;
+    let start = Math.max(segStart, prevEnd, startBase);
+
+    const fallbackEnd = Number.isFinite(rawTo) ? rawTo : segEnd;
+    const proposedEnd = Number.isFinite(nextRawStart) ? nextRawStart : fallbackEnd;
+    let end = Math.max(proposedEnd, start + MIN_WORD_DURATION_MS);
+
+    // Reserve enough room for remaining words to keep durations valid.
+    const remaining = words.length - i - 1;
+    const latestEnd = Math.max(start + MIN_WORD_DURATION_MS, segEnd - remaining * MIN_WORD_DURATION_MS);
+    end = Math.min(end, latestEnd, segEnd);
+
+    if (end <= start) {
+      end = Math.min(segEnd, start + MIN_WORD_DURATION_MS);
+    }
+    if (end <= start) {
+      // Degenerate segment: force strictly increasing timestamps.
+      end = start + 1;
+    }
+
+    out.push({ start: Math.round(start), end: Math.round(end) });
+    prevEnd = end;
+  }
+
+  return out;
+}
+
+/**
  * Build ASS from whisper JSON segments (each with a tokens array).
  *
  * @param {Array}  segments - parsed whisper transcription array
@@ -126,11 +189,13 @@ function segmentsToAss(segments, options = {}) {
   const highlightBg    = options.highlightBg    || '#000000';
   const outlineColor   = options.outlineColor   || '#000000';
   const fontSize       = options.fontSize       || 64;
+  const fontFamily     = options.fontFamily     || 'Roboto';
+  const fontVariant    = options.fontVariant    || 'regular';
 
   const highlightAss = hexToAss(highlightColor);
   const highlightBgAss = hexToAss(highlightBg);
 
-  const header = buildAssHeader(textColor, outlineColor, fontSize);
+  const header = buildAssHeader(textColor, outlineColor, fontSize, fontFamily, fontVariant);
 
   const dialogueLines = [];
 
@@ -138,7 +203,9 @@ function segmentsToAss(segments, options = {}) {
     // Skip segments that are music, noise, or silence annotations
     if (HALLUCINATION_RE.test(segment.text)) continue;
 
-    const segEnd = segment.offsets.to;
+    const segStart = Math.max(0, Number(segment.offsets.from) || 0);
+    const segEndRaw = Number(segment.offsets.to);
+    const segEnd = Math.max(segStart + MIN_WORD_DURATION_MS, Number.isFinite(segEndRaw) ? segEndRaw : segStart + MIN_WORD_DURATION_MS);
 
     // Merge sub-word tokens (apostrophes, punctuation) into their parent word
     const words = mergeTokensIntoWords(segment.tokens);
@@ -146,10 +213,11 @@ function segmentsToAss(segments, options = {}) {
     if (words.length === 0) continue;
 
     const wordTexts = words.map((w) => w.text);
+    const wordTimings = normalizeWordTimings(words, segStart, segEnd);
 
     for (let i = 0; i < words.length; i++) {
-      const lineStart = words[i].offsets.from;
-      const lineEnd   = i + 1 < words.length ? words[i + 1].offsets.from : segEnd;
+      const lineStart = wordTimings[i].start;
+      const lineEnd   = wordTimings[i].end;
 
       // Build full segment text; only the active word gets the highlight tags.
       let text = '';
