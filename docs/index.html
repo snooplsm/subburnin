@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SubBurnIn — Local AI Video Captioning</title>
+  <meta name="description" content="Drag-drop a video, get a captioned file. No cloud, no API keys, no usage fees. Powered by Whisper running entirely on-device." />
+  <meta property="og:image" content="subburnin.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #000;
+      --surface: #111;
+      --border: #222;
+      --text: #fff;
+      --muted: #888;
+      --accent: #fff;
+      --accent-text: #000;
+      --gold: #CFA84E;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 80px 24px 60px;
+      text-align: center;
+      max-width: 760px;
+      width: 100%;
+    }
+
+    .logo {
+      width: min(480px, 90vw);
+      height: auto;
+      margin-bottom: 32px;
+    }
+
+    .tagline {
+      font-size: clamp(18px, 3vw, 22px);
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 540px;
+      margin-bottom: 48px;
+    }
+
+    /* ── Download buttons ── */
+    .downloads {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      justify-content: center;
+      margin-bottom: 18px;
+    }
+
+    .dl-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 24px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 500;
+      transition: border-color 0.15s, background 0.15s;
+      min-width: 200px;
+    }
+
+    .dl-btn:hover { border-color: #555; background: #1a1a1a; }
+
+    .dl-btn .icon { font-size: 22px; }
+
+    .dl-btn .info { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+    .dl-btn .label { font-weight: 600; }
+    .dl-btn .sub { font-size: 12px; color: var(--muted); }
+
+    .dl-btn.primary {
+      background: var(--accent);
+      color: var(--accent-text);
+      border-color: var(--accent);
+    }
+    .dl-btn.primary:hover { background: #e0e0e0; border-color: #e0e0e0; }
+    .dl-btn.primary .sub { color: #555; }
+
+    .version-note {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 64px;
+    }
+
+    .version-note a { color: var(--muted); }
+    .version-note a:hover { color: var(--text); }
+
+    /* ── Features ── */
+    .features {
+      width: 100%;
+      max-width: 760px;
+      padding: 0 24px 80px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .feature {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+    }
+
+    .feature .feat-icon { font-size: 28px; margin-bottom: 12px; }
+    .feature h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .feature p  { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      width: 100%;
+      padding: 24px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+
+    .skeleton {
+      background: var(--surface);
+      border-radius: 8px;
+      height: 20px;
+      width: 120px;
+      display: inline-block;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50%       { opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+
+  <section class="hero">
+    <img src="subburnin.png" alt="SubBurnIn" class="logo" />
+
+    <p class="tagline">
+      Drag-drop a video, get a captioned file.<br>
+      No cloud, no API keys, no usage fees.<br>
+      Powered by Whisper — running entirely on your device.
+    </p>
+
+    <div class="downloads" id="downloads">
+      <!-- Populated by JS from GitHub Releases API -->
+      <span class="skeleton"></span>
+    </div>
+
+    <p class="version-note" id="version-note">&nbsp;</p>
+  </section>
+
+  <section class="features">
+    <div class="feature">
+      <div class="feat-icon">🎬</div>
+      <h3>Per-word highlighting</h3>
+      <p>Each word lights up as it's spoken — champagne-gold pill effect, fully customizable colors.</p>
+    </div>
+    <div class="feature">
+      <div class="feat-icon">🔒</div>
+      <h3>100% offline</h3>
+      <p>Whisper runs locally. Your video never leaves your machine.</p>
+    </div>
+    <div class="feature">
+      <div class="feat-icon">🌍</div>
+      <h3>13 languages</h3>
+      <p>Auto-detect or pick English, Spanish, French, German, Japanese, Chinese, and more.</p>
+    </div>
+    <div class="feature">
+      <div class="feat-icon">⚡</div>
+      <h3>Five model sizes</h3>
+      <p>From tiny (75 MB, fastest) to large-v3 (3.1 GB, best quality). Download once, use forever.</p>
+    </div>
+    <div class="feature">
+      <div class="feat-icon">🎨</div>
+      <h3>Custom caption style</h3>
+      <p>Adjust text color, highlight color, pill background, outline, and font size to match your brand.</p>
+    </div>
+    <div class="feature">
+      <div class="feat-icon">🔄</div>
+      <h3>Resumable downloads</h3>
+      <p>Interrupted model download? It picks up right where it left off.</p>
+    </div>
+  </section>
+
+  <footer>
+    <a href="https://github.com/snooplsm/subburnin">GitHub</a> &nbsp;·&nbsp;
+    <a href="https://github.com/snooplsm/subburnin/releases">All releases</a> &nbsp;·&nbsp;
+    <a href="https://github.com/snooplsm/subburnin/issues">Report a bug</a>
+  </footer>
+
+  <script>
+    const REPO = 'snooplsm/subburnin';
+
+    async function loadRelease() {
+      const downloadsEl  = document.getElementById('downloads');
+      const versionNoteEl = document.getElementById('version-note');
+
+      try {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
+        if (!res.ok) throw new Error('No release found');
+        const release = await res.json();
+
+        const version = release.tag_name;
+        const assets  = release.assets || [];
+
+        // Map asset filenames to button metadata
+        const buttons = [];
+
+        const mac_arm = assets.find(a => /arm64.*\.dmg$/i.test(a.name) || /mac.*arm64.*\.dmg$/i.test(a.name));
+        const mac_x64 = assets.find(a => /x64.*\.dmg$/i.test(a.name)   || /mac.*x64.*\.dmg$/i.test(a.name));
+        const win_x64 = assets.find(a => /x64.*\.exe$/i.test(a.name)   || /win.*setup.*\.exe$/i.test(a.name));
+
+        if (mac_arm) buttons.push({ url: mac_arm.browser_download_url, icon: '🍎', label: 'macOS', sub: 'Apple Silicon (arm64)', primary: true });
+        if (mac_x64) buttons.push({ url: mac_x64.browser_download_url, icon: '🍎', label: 'macOS', sub: 'Intel (x64)' });
+        if (win_x64) buttons.push({ url: win_x64.browser_download_url, icon: '🪟', label: 'Windows', sub: 'x64 installer' });
+
+        if (buttons.length === 0) {
+          // Fallback: link to releases page
+          buttons.push({ url: `https://github.com/${REPO}/releases/latest`, icon: '📦', label: 'Download', sub: 'View all assets', primary: true });
+        }
+
+        downloadsEl.innerHTML = buttons.map(b => `
+          <a href="${b.url}" class="dl-btn${b.primary ? ' primary' : ''}">
+            <span class="icon">${b.icon}</span>
+            <span class="info">
+              <span class="label">${b.label}</span>
+              <span class="sub">${b.sub}</span>
+            </span>
+          </a>
+        `).join('');
+
+        const date = new Date(release.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        versionNoteEl.innerHTML = `${version} &nbsp;·&nbsp; ${date} &nbsp;·&nbsp; <a href="https://github.com/${REPO}/releases/tag/${version}">Release notes</a>`;
+
+      } catch {
+        downloadsEl.innerHTML = `
+          <a href="https://github.com/${REPO}/releases/latest" class="dl-btn primary">
+            <span class="icon">📦</span>
+            <span class="info">
+              <span class="label">Download</span>
+              <span class="sub">View latest release</span>
+            </span>
+          </a>`;
+        versionNoteEl.innerHTML = `<a href="https://github.com/${REPO}/releases">All releases →</a>`;
+      }
+    }
+
+    loadRelease();
+  </script>
+
+</body>
+</html>

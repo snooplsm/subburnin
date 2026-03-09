@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── macOS ──────────────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build macOS DMGs (arm64 + x64)
+        run: npm run build:ci:mac
+        env:
+          # Unsigned build — no certificate needed
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # ── Code signing (add when you have a Developer ID cert) ──────────
+          # 1. Export your Developer ID Application cert as a .p12 file
+          # 2. base64-encode it:  base64 -i cert.p12 | pbcopy
+          # 3. Add secrets to the repo:
+          #      MAC_CSC_LINK       → the base64 string
+          #      MAC_CSC_KEY_PASSWORD → the .p12 export password
+          # 4. Replace the line above with:
+          #      CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          #      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          #      APPLE_ID: ${{ secrets.APPLE_ID }}
+          #      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          #      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # 5. Add `notarize: true` under `mac:` in package.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  # ── Windows ────────────────────────────────────────────────────────────────
+  build-win:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build Windows installer (x64)
+        run: npm run build:ci:win
+        env:
+          # ── Code signing (add when you have a Windows cert) ───────────────
+          # 1. Obtain an EV or OV code signing certificate as a .p12 / .pfx
+          # 2. base64-encode it and add secrets:
+          #      WIN_CSC_LINK         → base64 .pfx string
+          #      WIN_CSC_KEY_PASSWORD → .pfx password
+          # 3. Replace nothing above — electron-builder picks them up
+          #    automatically from those env var names.
+          WIN_CSC_LINK: ''
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-installer
+          path: dist/*.exe
+          if-no-files-found: error
+
+  # ── GitHub Release ─────────────────────────────────────────────────────────
+  release:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh artifacts/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

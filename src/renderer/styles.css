@@ -1,0 +1,963 @@
+/* ========================================
+   CSS Custom Properties — Dark (default)
+   ======================================== */
+:root {
+  --bg:           #000000;
+  --surface:      #111111;
+  --surface2:     #1a1a1a;
+  --border:       #2a2a2a;
+  --border2:      #3a3a3a;
+  --text:         #ffffff;
+  --text-muted:   #888888;
+  --text-dim:     #444444;
+  --accent-bg:    #ffffff;
+  --accent-text:  #000000;
+  --secondary-bg: #1f1f1f;
+  --secondary-text: #cccccc;
+  --progress-bg:  #1f1f1f;
+  --progress-fill: #ffffff;
+  --step-inactive: #333333;
+  --step-active:  #888888;
+  --step-done:    #ffffff;
+  --green:        #22c55e;
+  --green-bg:     rgba(34, 197, 94, 0.08);
+  --error:        #ff4444;
+  --success:      #44ff88;
+  --overlay:      rgba(0, 0, 0, 0.7);
+  --drop-border:  #333333;
+  --drop-bg:      #0a0a0a;
+  --drop-hover-border: #666666;
+  --drop-hover-bg: #111111;
+}
+
+/* ========================================
+   Light Theme
+   ======================================== */
+[data-theme="light"] {
+  --bg:           #ffffff;
+  --surface:      #f5f5f5;
+  --surface2:     #eeeeee;
+  --border:       #e0e0e0;
+  --border2:      #cccccc;
+  --text:         #000000;
+  --text-muted:   #555555;
+  --text-dim:     #aaaaaa;
+  --accent-bg:    #000000;
+  --accent-text:  #ffffff;
+  --secondary-bg: #e8e8e8;
+  --secondary-text: #333333;
+  --progress-bg:  #e0e0e0;
+  --progress-fill: #000000;
+  --step-inactive: #cccccc;
+  --step-active:  #666666;
+  --step-done:    #000000;
+  --green:        #16a34a;
+  --green-bg:     rgba(22, 163, 74, 0.07);
+  --error:        #cc0000;
+  --success:      #007a33;
+  --overlay:      rgba(0, 0, 0, 0.3);
+  --drop-border:  #cccccc;
+  --drop-bg:      #fafafa;
+  --drop-hover-border: #888888;
+  --drop-hover-bg: #f0f0f0;
+}
+
+/* ========================================
+   Base
+   ======================================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ========================================
+   Header
+   ======================================== */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#logo {
+  height: 36px;
+  width: auto;
+  display: block;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#theme-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+#theme-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+#settings-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+#settings-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* ========================================
+   Main content
+   ======================================== */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  gap: 24px;
+  overflow: hidden;
+}
+
+/* ========================================
+   Drop Zone
+   ======================================== */
+#drop-zone {
+  width: 100%;
+  max-width: 600px;
+  height: 240px;
+  border: 2px dashed var(--drop-border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  background: var(--drop-bg);
+}
+
+#drop-zone.drag-over {
+  border-color: var(--drop-hover-border);
+  background: var(--drop-hover-bg);
+}
+
+#drop-zone.processing {
+  border-color: var(--border);
+  cursor: default;
+  pointer-events: none;
+}
+
+#drop-icon {
+  font-size: 44px;
+  opacity: 0.5;
+}
+
+#drop-text {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+#drop-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+/* ========================================
+   Progress Section
+   ======================================== */
+#progress-section {
+  width: 100%;
+  max-width: 600px;
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#progress-section.visible {
+  display: flex;
+}
+
+#progress-bar-track {
+  height: 4px;
+  background: var(--progress-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#progress-bar-fill {
+  height: 100%;
+  background: var(--progress-fill);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+#progress-steps {
+  display: flex;
+  justify-content: space-between;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--step-inactive);
+  transition: background 0.3s;
+}
+
+.step.active {
+  color: var(--text-muted);
+}
+
+.step.active .step-dot {
+  background: var(--step-active);
+}
+
+.step.done {
+  color: var(--text-muted);
+}
+
+.step.done .step-dot {
+  background: var(--step-done);
+}
+
+#status-msg {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 18px;
+}
+
+#status-msg.error {
+  color: var(--error);
+}
+
+/* ========================================
+   Output Section
+   ======================================== */
+#output-section {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+#output-section.visible {
+  display: flex;
+}
+
+#output-path {
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+  text-align: center;
+}
+
+#open-btn {
+  padding: 10px 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  transition: opacity 0.2s;
+}
+
+#reset-btn {
+  padding: 10px 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text-muted);
+  transition: background 0.2s, color 0.2s;
+}
+
+#open-btn:hover {
+  opacity: 0.8;
+}
+
+#reset-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+/* ========================================
+   Settings Panel (slide-in)
+   ======================================== */
+#settings-panel {
+  position: fixed;
+  top: 0;
+  right: -380px;
+  width: 380px;
+  height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  transition: right 0.28s ease;
+  z-index: 100;
+  overflow-y: auto;
+}
+
+#settings-panel.open {
+  right: 0;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#settings-panel h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.settings-header #close-settings-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.settings-header #close-settings-btn:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setting-group label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.setting-group input,
+.setting-group select {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.setting-group select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  cursor: pointer;
+}
+
+.setting-group input:focus,
+.setting-group select:focus {
+  border-color: var(--text-muted);
+}
+
+.setting-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* Download model row */
+.model-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.model-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-dim);
+}
+
+.model-status-dot.ready {
+  background: var(--step-done);
+}
+
+.model-status-dot.missing {
+  background: var(--error);
+}
+
+.model-status-text {
+  flex: 1;
+  color: var(--text-muted);
+}
+
+#download-model-btn,
+#cancel-download-btn {
+  padding: 6px 14px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text);
+  white-space: nowrap;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+#download-model-btn:hover,
+#cancel-download-btn:hover {
+  background: var(--surface2);
+}
+
+#download-model-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#cancel-download-btn {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+#cancel-download-btn:hover {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+}
+
+#model-download-progress {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  display: none;
+  padding: 4px 0;
+}
+
+#model-download-progress.visible {
+  display: block;
+}
+
+/* Settings buttons */
+.settings-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+#save-settings-btn {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+#save-settings-btn:hover {
+  opacity: 0.8;
+}
+
+#close-settings-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 9px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+#close-settings-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.settings-divider {
+  height: 1px;
+  background: var(--border);
+}
+
+/* Overlay */
+#overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  z-index: 99;
+}
+
+#overlay.visible {
+  display: block;
+}
+
+/* ========================================
+   Setup page specific
+   ======================================== */
+.setup-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 28px;
+  padding: 40px;
+  background: var(--bg);
+}
+
+.setup-wrap h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.5px;
+}
+
+.setup-wrap p {
+  font-size: 14px;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 480px;
+  line-height: 1.6;
+}
+
+/* Inline clickable select — looks like underlined text */
+.inline-select {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--text-muted);
+  color: var(--text);
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 14px 0 0;
+  margin: 0 1px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23888' d='M4 5.5L1 2h6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 2px center;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.inline-select:hover {
+  border-bottom-color: var(--text);
+  color: var(--text);
+}
+
+.inline-select:focus {
+  border-bottom-color: var(--text);
+}
+
+/* Disable pointer events / dim when step is running */
+.step-row.active .inline-select,
+.step-row.done .inline-select {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.steps {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.step-gear {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  margin-top: 1px;
+}
+
+.step-row:hover .step-gear {
+  opacity: 1;
+}
+
+.step-gear:hover {
+  color: var(--text-muted);
+}
+
+.step-gear.active {
+  opacity: 1;
+  color: var(--text-muted);
+}
+
+.step-path-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.step-path-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: monospace;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.step-path-input:focus {
+  border-color: var(--text-muted);
+}
+
+.step-path-save {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.step-path-save:hover {
+  opacity: 0.8;
+}
+
+.step-icon {
+  font-size: 18px;
+  width: 26px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.step-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.step-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.step-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-height: 14px;
+}
+
+.step-row.done {
+  border-color: var(--green);
+  background: var(--green-bg);
+}
+
+.step-row.done .step-label {
+  color: var(--green);
+}
+
+.step-row.done .step-detail {
+  color: var(--green);
+  opacity: 0.75;
+}
+
+.step-row.done .step-icon {
+  color: var(--green);
+}
+
+.step-row.active {
+  border-color: var(--text-muted);
+}
+
+.step-row.error {
+  border-color: var(--error);
+}
+
+.progress-wrap {
+  width: 100%;
+  max-width: 480px;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-wrap.visible {
+  display: flex;
+}
+
+.progress-track {
+  height: 4px;
+  background: var(--progress-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--progress-fill);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.3s;
+}
+
+.progress-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.setup-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+}
+
+#start-btn {
+  padding: 12px 40px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+#start-btn:hover {
+  opacity: 0.85;
+}
+
+#start-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#cancel-btn {
+  padding: 12px 28px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border2);
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+#cancel-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+#cancel-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#error-msg {
+  color: var(--error);
+  font-size: 13px;
+  text-align: center;
+  max-width: 480px;
+  display: none;
+}
+
+#error-msg.visible {
+  display: block;
+}
+
+/* ========================================
+   Whole-app drag overlay
+   ======================================== */
+body.body-drag-over::after {
+  content: 'Drop video to caption';
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text);
+  z-index: 200;
+  pointer-events: none;
+  border: 3px dashed var(--text-muted);
+  border-radius: 14px;
+  margin: 16px;
+  box-sizing: border-box;
+}
+
+/* ========================================
+   Caption color grid (settings panel)
+   ======================================== */
+.caption-color-grid {
+  display: flex;
+  gap: 12px;
+}
+
+.caption-color-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+}
+
+.caption-color-item span {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.color-picker {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 2px;
+  background: var(--bg);
+  -webkit-appearance: none;
+}
+
+.color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 4px;
+}
+
+.color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.color-hex-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 11px;
+  font-family: monospace;
+  padding: 4px 6px;
+  outline: none;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.color-hex-input:focus {
+  border-color: var(--text-muted);
+}

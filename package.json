@@ -1,0 +1,82 @@
+{
+  "name": "subburnin",
+  "version": "1.0.0",
+  "description": "Local AI video captioning with per-word highlighting",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "npm run make-icon && electron-builder",
+    "build:unsigned": "npm run make-icon && electron-builder --config.mac.identity=null",
+    "build:ci:mac": "electron-builder --mac --x64 --arm64 --config.mac.identity=null",
+    "build:ci:win": "electron-builder --win --x64",
+    "make-icon": "bash scripts/build-icon.sh"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.subburnin.app",
+    "productName": "SubBurnIn",
+    "copyright": "Copyright © 2025",
+    "files": [
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.video",
+      "darkModeSupport": true
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "dmg": {
+      "title": "Install SubBurnIn",
+      "format": "ULFO",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 400
+      }
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    }
+  }
+}

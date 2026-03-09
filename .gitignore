@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.DS_Store
+
+# Model files — too large for git (downloaded on first run)
+*.bin
+
+# Generated icon intermediate files
+assets/AppIcon.iconset/
+
+# Temp files
+*.wav

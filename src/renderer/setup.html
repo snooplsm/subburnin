@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SubBurnIn — First Time Setup</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="setup-wrap">
+    <h1>SubBurnIn — First Time Setup</h1>
+    <p>A few tools need to be installed before you can use SubBurnIn. This only happens once.</p>
+
+    <div class="steps">
+
+      <!-- ffmpeg — always bundled -->
+      <div class="step-row done" id="row-ffmpeg">
+        <div class="step-icon">✓</div>
+        <div class="step-info">
+          <div class="step-label">ffmpeg</div>
+          <div class="step-detail" id="detail-ffmpeg">Bundled — no download needed</div>
+          <div class="step-path-row" id="path-row-ffmpeg" style="display:none">
+            <input class="step-path-input" id="path-input-ffmpeg" placeholder="/path/to/ffmpeg" />
+            <button class="step-path-save" data-step="ffmpeg">Use this path</button>
+          </div>
+        </div>
+        <button class="step-gear" id="gear-ffmpeg" title="Override path">⚙</button>
+      </div>
+
+      <!-- whisper-cpp -->
+      <div class="step-row" id="row-whisper">
+        <div class="step-icon" id="icon-whisper">⏳</div>
+        <div class="step-info">
+          <div class="step-label">whisper-cpp</div>
+          <div class="step-detail" id="detail-whisper">Local speech recognition engine</div>
+          <div class="step-path-row" id="path-row-whisper" style="display:none">
+            <input class="step-path-input" id="path-input-whisper" placeholder="/path/to/whisper-cli" />
+            <button class="step-path-save" data-step="whisper">Use this path</button>
+          </div>
+        </div>
+        <button class="step-gear" id="gear-whisper" title="Override path">⚙</button>
+      </div>
+
+      <!-- Whisper model -->
+      <div class="step-row" id="row-model">
+        <div class="step-icon" id="icon-model">⏳</div>
+        <div class="step-info">
+          <div class="step-label">Whisper model</div>
+          <div class="step-detail">
+            Download
+            <select id="setup-model-size" class="inline-select">
+              <option value="large">large-v3 (~3.1 GB)</option>
+              <option value="medium" selected>medium (~1.5 GB)</option>
+              <option value="small">small (~466 MB)</option>
+              <option value="base">base (~142 MB)</option>
+              <option value="tiny">tiny (~75 MB)</option>
+            </select>
+            for
+            <select id="setup-language" class="inline-select">
+              <option value="auto">all languages</option>
+              <option value="en" selected>English</option>
+              <option value="es">Spanish</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="pt">Portuguese</option>
+              <option value="it">Italian</option>
+              <option value="ja">Japanese</option>
+              <option value="zh">Chinese</option>
+              <option value="ko">Korean</option>
+              <option value="ru">Russian</option>
+              <option value="ar">Arabic</option>
+              <option value="hi">Hindi</option>
+            </select>
+          </div>
+          <div class="step-path-row" id="path-row-model" style="display:none">
+            <input class="step-path-input" id="path-input-model" placeholder="/path/to/ggml-model.bin" />
+            <button class="step-path-save" data-step="model">Use this path</button>
+          </div>
+          <div class="step-detail" id="detail-model" style="margin-top:2px"></div>
+        </div>
+        <button class="step-gear" id="gear-model" title="Use existing model file">⚙</button>
+      </div>
+
+    </div>
+
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-label" id="progress-label"></div>
+    </div>
+
+    <div id="error-msg"></div>
+
+    <div class="setup-actions">
+      <button id="start-btn">Install &amp; Download</button>
+      <button id="cancel-btn" style="display:none">Cancel</button>
+    </div>
+  </div>
+
+  <script src="setup-app.js"></script>
+</body>
+</html>
