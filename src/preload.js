@@ -22,6 +22,14 @@ contextBridge.exposeInMainWorld('subburnin', {
     return ipcRenderer.invoke('ipc:open-output-dir', filePath);
   },
 
+  openOutputFolder(filePath) {
+    return ipcRenderer.invoke('ipc:open-output-folder', filePath);
+  },
+
+  revealFileInFolder(filePath) {
+    return ipcRenderer.invoke('ipc:reveal-file-in-folder', filePath);
+  },
+
   getFilePath(file) {
     return webUtils.getPathForFile(file);
   },
@@ -37,5 +45,25 @@ contextBridge.exposeInMainWorld('subburnin', {
 
   cancelDownload() {
     return ipcRenderer.invoke('ipc:cancel-download');
+  },
+
+  cancelProcessing() {
+    return ipcRenderer.invoke('ipc:cancel-processing');
+  },
+
+  getFontIndex(forceRefresh = false) {
+    return ipcRenderer.invoke('ipc:get-font-index', forceRefresh);
+  },
+
+  getDownloadedFonts() {
+    return ipcRenderer.invoke('ipc:get-downloaded-fonts');
+  },
+
+  downloadGoogleFont(family, variant = 'regular') {
+    return ipcRenderer.invoke('ipc:download-google-font', family, variant);
+  },
+
+  createPreviewProxy(videoPath) {
+    return ipcRenderer.invoke('ipc:create-preview-proxy', videoPath);
   }
 });
