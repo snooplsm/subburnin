@@ -230,9 +230,13 @@
         // Map asset filenames to button metadata
         const buttons = [];
 
-        const mac_arm = assets.find(a => /arm64.*\.dmg$/i.test(a.name) || /mac.*arm64.*\.dmg$/i.test(a.name));
-        const mac_x64 = assets.find(a => /x64.*\.dmg$/i.test(a.name)   || /mac.*x64.*\.dmg$/i.test(a.name));
-        const win_x64 = assets.find(a => /x64.*\.exe$/i.test(a.name)   || /win.*setup.*\.exe$/i.test(a.name));
+        const dmgAssets = assets.filter(a => /\.dmg$/i.test(a.name) && !/\.blockmap$/i.test(a.name));
+        const exeAssets = assets.filter(a => /\.exe$/i.test(a.name) && !/\.blockmap$/i.test(a.name));
+
+        const mac_arm = dmgAssets.find(a => /arm64/i.test(a.name));
+        // Intel DMG is commonly the generic .dmg without "arm64" in the filename.
+        const mac_x64 = dmgAssets.find(a => !/arm64/i.test(a.name));
+        const win_x64 = exeAssets.find(a => /setup/i.test(a.name)) || exeAssets[0];
 
         if (mac_arm) buttons.push({ url: mac_arm.browser_download_url, icon: '🍎', label: 'macOS', sub: 'Apple Silicon (arm64)', primary: true });
         if (mac_x64) buttons.push({ url: mac_x64.browser_download_url, icon: '🍎', label: 'macOS', sub: 'Intel (x64)' });

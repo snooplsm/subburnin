@@ -20,7 +20,7 @@ Everything else (whisper-cpp, ffmpeg-full, the Whisper model) is downloaded auto
 ## Development
 
 ```bash
-git clone <repo>
+git clone https://github.com/snooplsm/subburnin.git
 cd subburnin
 npm install
 npm start
