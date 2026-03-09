@@ -15,13 +15,31 @@ const DEFAULTS = {
   caption_highlight_color: '#CFA84E',
   caption_highlight_bg:    '#000000',
   caption_outline_color:   '#000000',
-  caption_font_size:       64
+  caption_font_size:       64,
+  caption_font_family:     'Roboto'
 };
+
+function migrateLegacyModelOverride(config) {
+  const override = config.whisper_model_path_override;
+  if (!override) return config;
+
+  // Legacy installs used ~/.captions. If that stale override remains, it can
+  // block the valid default model path under ~/.subburnin.
+  const isLegacyCaptionsPath = String(override).includes(`${path.sep}.captions${path.sep}`);
+  const exists = fs.existsSync(override);
+  if (isLegacyCaptionsPath && !exists) {
+    const next = { ...config };
+    delete next.whisper_model_path_override;
+    return next;
+  }
+  return config;
+}
 
 function getConfig() {
   try {
     if (!fs.existsSync(CONFIG_FILE)) return { ...DEFAULTS };
-    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) };
+    const merged = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) };
+    return migrateLegacyModelOverride(merged);
   } catch {
     return { ...DEFAULTS };
   }
