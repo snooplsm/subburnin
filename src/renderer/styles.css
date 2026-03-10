@@ -157,6 +157,15 @@ main {
   padding: 32px;
   gap: 24px;
   overflow: hidden;
+  scroll-behavior: smooth;
+  transition: padding 0.24s ease;
+}
+
+main.work-mode {
+  justify-content: flex-start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: 18px;
 }
 
 /* ========================================
@@ -165,6 +174,7 @@ main {
 #drop-zone {
   width: 100%;
   max-width: 600px;
+  min-height: 240px;
   height: 240px;
   border: 2px dashed var(--drop-border);
   border-radius: 14px;
@@ -215,10 +225,18 @@ main {
   display: none;
   flex-direction: column;
   gap: 14px;
+  flex-shrink: 0;
 }
 
 #progress-section.visible {
   display: flex;
+}
+
+.progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 #progress-bar-track {
@@ -277,12 +295,43 @@ main {
 #status-msg {
   font-size: 13px;
   color: var(--text-muted);
-  text-align: center;
+  text-align: left;
   min-height: 18px;
+  flex: 1;
 }
 
 #status-msg.error {
   color: var(--error);
+}
+
+#process-cancel-btn {
+  display: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#process-cancel-btn.visible {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#process-cancel-btn:hover {
+  color: var(--error);
+  border-color: var(--error);
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+}
+
+#process-cancel-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 /* ========================================
@@ -293,6 +342,7 @@ main {
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 #output-section.visible {
@@ -300,43 +350,201 @@ main {
 }
 
 #output-path {
+  border: none;
+  background: transparent;
+  padding: 0;
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--text);
   word-break: break-all;
+  text-align: center;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+#output-path:hover {
+  color: var(--text-muted);
+}
+
+#output-next-hint {
+  font-size: 11px;
+  color: var(--text-dim);
   text-align: center;
 }
 
-#open-btn {
-  padding: 10px 28px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  background: var(--accent-bg);
-  color: var(--accent-text);
-  transition: opacity 0.2s;
+/* ========================================
+   Caption Controls
+   ======================================== */
+#caption-controls {
+  width: 100%;
+  max-width: 920px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  flex-shrink: 0;
 }
 
-#reset-btn {
-  padding: 10px 28px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--border2);
-  background: transparent;
+.caption-controls-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.caption-controls-head h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
   color: var(--text-muted);
-  transition: background 0.2s, color 0.2s;
 }
 
-#open-btn:hover {
-  opacity: 0.8;
+.caption-controls-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr 180px;
+  gap: 10px;
+  align-items: end;
 }
 
-#reset-btn:hover {
-  background: var(--surface2);
-  color: var(--text);
+/* ========================================
+   Preview Section
+   ======================================== */
+#preview-section {
+  width: 100%;
+  max-width: 920px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+#preview-section.visible {
+  display: flex;
+}
+
+.preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-head h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--text-muted);
+}
+
+#preview-status {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+#preview-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#preview-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+#preview-play-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 62px;
+  height: 62px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  font-size: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+#preview-play-btn:hover {
+  background: rgba(0, 0, 0, 0.65);
+  transform: translate(-50%, -50%) scale(1.03);
+}
+
+#preview-video-wrap.is-playing #preview-play-btn {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#preview-video-wrap.is-playing.controls-visible #preview-play-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#preview-captions {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  bottom: 5%;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.preview-caption-line {
+  max-width: 100%;
+  line-height: 1.45;
+  text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65));
+}
+
+.preview-word {
+  white-space: inherit;
+}
+
+.preview-word.active {
+  border-radius: 0.55em;
+  padding: 0 0.18em;
+}
+
+.preview-controls {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+#preview-timeline {
+  width: 100%;
+}
+
+#preview-time {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  text-align: right;
 }
 
 /* ========================================
@@ -520,36 +728,6 @@ main {
   letter-spacing: 0.4px;
 }
 
-.font-controls {
-  display: flex;
-  gap: 8px;
-}
-
-#download-font-btn,
-#refresh-font-index-btn {
-  flex: 1;
-  padding: 6px 10px;
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid var(--border2);
-  background: transparent;
-  color: var(--text);
-  transition: background 0.2s;
-}
-
-#download-font-btn:hover,
-#refresh-font-index-btn:hover {
-  background: var(--surface2);
-}
-
-#download-font-btn:disabled,
-#refresh-font-index-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .font-popup {
   position: fixed;
   inset: 0;
@@ -700,30 +878,6 @@ main {
 
 #model-download-progress.visible {
   display: block;
-}
-
-/* Settings buttons */
-.settings-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-#save-settings-btn {
-  background: var(--accent-bg);
-  color: var(--accent-text);
-  border: none;
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-#save-settings-btn:hover {
-  opacity: 0.8;
 }
 
 #close-settings-btn {

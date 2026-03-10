@@ -115,7 +115,7 @@ function listDownloadedFonts() {
     const key = `${family.toLowerCase()}::${variant}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    results.push({ family, variant, file: filename });
+    results.push({ family, variant, file: filename, path: path.join(FONTS_DIR, filename) });
   }
   return results.sort((a, b) => (a.family.localeCompare(b.family) || a.variant.localeCompare(b.variant)));
 }

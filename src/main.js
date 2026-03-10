@@ -10,7 +10,7 @@ if (process.platform === 'darwin') {
 }
 
 const { getConfig, setConfig } = require('./services/config');
-const { extractAudio, burnSubBurnIn } = require('./services/ffmpeg');
+const { extractAudio, burnSubBurnIn, createPreviewProxy } = require('./services/ffmpeg');
 const { transcribe } = require('./services/whisper');
 const { segmentsToAss } = require('./services/converter');
 const { isSetupComplete, checkDependencies, runSetup, downloadModel, getModelPath, getModelFilename } = require('./services/setup');
@@ -24,6 +24,7 @@ const {
 
 let activeDownloadController = null;
 let activeSetupController    = null;
+let activeProcessingController = null;
 
 // --- Window factories ---
 
@@ -241,9 +242,59 @@ ipcMain.handle('ipc:open-output-dir', (event, filePath) => {
   shell.showItemInFolder(filePath);
 });
 
+ipcMain.handle('ipc:open-output-folder', (event, filePath) => {
+  if (!filePath) return;
+  const folderPath = path.dirname(filePath);
+  shell.openPath(folderPath);
+});
+
+ipcMain.handle('ipc:reveal-file-in-folder', (event, filePath) => {
+  if (!filePath) return;
+  shell.showItemInFolder(filePath);
+});
+
+ipcMain.handle('ipc:cancel-processing', () => {
+  if (activeProcessingController) {
+    activeProcessingController.abort();
+    activeProcessingController = null;
+  }
+  return { cancelled: true };
+});
+
+ipcMain.handle('ipc:create-preview-proxy', async (event, videoPath) => {
+  if (!videoPath || !fs.existsSync(videoPath)) {
+    return { success: false, error: 'Source video not found' };
+  }
+
+  try {
+    const stat = fs.statSync(videoPath);
+    const key = crypto
+      .createHash('sha1')
+      .update(`${videoPath}|${stat.size}|${stat.mtimeMs}`)
+      .digest('hex')
+      .slice(0, 16);
+
+    const cacheDir = path.join(os.tmpdir(), 'subburnin-preview-cache');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const proxyPath = path.join(cacheDir, `${key}.mp4`);
+
+    if (!fs.existsSync(proxyPath) || fs.statSync(proxyPath).size === 0) {
+      await createPreviewProxy(videoPath, proxyPath);
+    }
+
+    return { success: true, proxyPath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // --- IPC: Process video ---
 
 ipcMain.handle('ipc:process-video', async (event, videoPath) => {
+  if (activeProcessingController) activeProcessingController.abort();
+  activeProcessingController = new AbortController();
+  const { signal } = activeProcessingController;
+
   const tmpDir = path.join(os.tmpdir(), `subburnin-${crypto.randomUUID()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
@@ -268,11 +319,20 @@ ipcMain.handle('ipc:process-video', async (event, videoPath) => {
     // Step 1: Extract audio
     sendProgress({ stage: 'extracting', percent: 10, message: 'Extracting audio...' });
     const wavPath = path.join(tmpDir, 'audio.wav');
-    await extractAudio(videoPath, wavPath, sendProgress);
+    await extractAudio(videoPath, wavPath, sendProgress, signal);
 
     // Step 2: Transcribe
     sendProgress({ stage: 'transcribing', percent: 35, message: 'Transcribing with Whisper...' });
-    const segments = await transcribe(wavPath, tmpDir, sendProgress);
+    const segments = await transcribe(wavPath, tmpDir, sendProgress, signal);
+    sendProgress({
+      stage: 'transcribing',
+      percent: 55,
+      message: 'Transcription ready for preview',
+      preview: {
+        videoPath,
+        segments
+      }
+    });
 
     // Step 3: Convert segments → karaoke ASS
     sendProgress({ stage: 'converting', percent: 70, message: 'Converting subtitles...' });
@@ -287,6 +347,15 @@ ipcMain.handle('ipc:process-video', async (event, videoPath) => {
     });
     const assPath = path.join(tmpDir, 'subburnin.ass');
     fs.writeFileSync(assPath, assContent, 'utf8');
+    sendProgress({
+      stage: 'converting',
+      percent: 75,
+      message: 'ASS preview ready',
+      previewAss: {
+        videoPath,
+        assContent
+      }
+    });
 
     // Also save ASS alongside the output video for inspection
     const assOutputPath = path.join(outputDir, `${videoBaseName}_subburnin.ass`);
@@ -294,14 +363,22 @@ ipcMain.handle('ipc:process-video', async (event, videoPath) => {
 
     // Step 4: Burn subburnin
     sendProgress({ stage: 'burning', percent: 80, message: 'Burning subburnin onto video...' });
-    await burnSubBurnIn(videoPath, assPath, outputVideoPath, sendProgress, { fontsDir: FONTS_DIR });
+    await burnSubBurnIn(videoPath, assPath, outputVideoPath, sendProgress, { fontsDir: FONTS_DIR, signal });
 
     sendProgress({ stage: 'done', percent: 100, message: 'Done!', outputPath: outputVideoPath });
+    activeProcessingController = null;
     return { success: true, outputPath: outputVideoPath };
   } catch (err) {
+    if (err && err.cancelled) {
+      sendProgress({ stage: 'cancelled', message: 'Processing cancelled.' });
+      activeProcessingController = null;
+      return { success: false, cancelled: true, error: 'Processing cancelled.' };
+    }
     sendProgress({ stage: 'error', message: err.message });
+    activeProcessingController = null;
     return { success: false, error: err.message };
   } finally {
+    activeProcessingController = null;
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }
 });

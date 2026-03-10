@@ -4,7 +4,7 @@ const path = require('path');
 const { getConfig } = require('./config');
 const { getWhisperCliPath, getModelPath } = require('./setup');
 
-function transcribe(wavPath, tmpDir, onProgress) {
+function transcribe(wavPath, tmpDir, onProgress, signal = null) {
   return new Promise((resolve, reject) => {
     const config   = getConfig();
     const size     = config.whisper_model_size || 'medium';
@@ -44,6 +44,22 @@ function transcribe(wavPath, tmpDir, onProgress) {
 
     const proc = spawn(whisperCli, args);
     let stderr = '';
+    let settled = false;
+
+    const abortHandler = () => {
+      try { proc.kill('SIGTERM'); } catch {}
+      const err = new Error('Transcription cancelled.');
+      err.cancelled = true;
+      if (!settled) {
+        settled = true;
+        reject(err);
+      }
+    };
+
+    if (signal) {
+      if (signal.aborted) return abortHandler();
+      signal.addEventListener('abort', abortHandler, { once: true });
+    }
 
     proc.stderr.on('data', (data) => {
       stderr += data.toString();
@@ -55,7 +71,16 @@ function transcribe(wavPath, tmpDir, onProgress) {
     });
 
     proc.on('close', (code) => {
+      if (signal) signal.removeEventListener('abort', abortHandler);
+      if (settled) return;
       if (code !== 0) {
+        if (signal && signal.aborted) {
+          const err = new Error('Transcription cancelled.');
+          err.cancelled = true;
+          settled = true;
+          return reject(err);
+        }
+        settled = true;
         return reject(new Error(`whisper-cli failed (code ${code}): ${stderr}`));
       }
 
@@ -73,13 +98,20 @@ function transcribe(wavPath, tmpDir, onProgress) {
 
       const segments = parsed.transcription;
       if (!segments || segments.length === 0) {
+        settled = true;
         return reject(new Error('Transcription returned empty result. Check the audio and model.'));
       }
 
+      settled = true;
       resolve(segments);
     });
 
-    proc.on('error', reject);
+    proc.on('error', (err) => {
+      if (signal) signal.removeEventListener('abort', abortHandler);
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
   });
 }
 

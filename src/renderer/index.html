@@ -23,7 +23,27 @@
       <div id="drop-hint">MP4 · MOV · MKV · AVI · WEBM</div>
     </div>
 
+    <section id="preview-section">
+      <div class="preview-head">
+        <h3>Preview</h3>
+        <div id="preview-status">Waiting for transcription…</div>
+      </div>
+      <div id="preview-video-wrap">
+        <video id="preview-video" preload="metadata"></video>
+        <button id="preview-play-btn" type="button" aria-label="Play/Pause">▶</button>
+        <div id="preview-captions"></div>
+      </div>
+      <div class="preview-controls">
+        <input id="preview-timeline" type="range" min="0" max="1000" value="0" />
+      </div>
+      <div id="preview-time">00:00.00 / 00:00.00</div>
+    </section>
+
     <div id="progress-section">
+      <div class="progress-meta">
+        <div id="status-msg"></div>
+        <button id="process-cancel-btn" title="Cancel processing" aria-label="Cancel processing">✕</button>
+      </div>
       <div id="progress-bar-track">
         <div id="progress-bar-fill"></div>
       </div>
@@ -45,14 +65,58 @@
           <span>Burn</span>
         </div>
       </div>
-      <div id="status-msg"></div>
     </div>
 
     <div id="output-section">
-      <div id="output-path"></div>
-      <button id="open-btn">Open Output</button>
-      <button id="reset-btn">Process Another</button>
+      <button id="output-path" type="button" title="Reveal file in folder"></button>
+      <div id="output-next-hint">Drop another video anywhere to process again.</div>
     </div>
+
+    <section id="caption-controls">
+      <div class="caption-controls-head">
+        <h3>Caption Controls</h3>
+        <div class="setting-hint" id="font-family-status">Default: Roboto</div>
+      </div>
+      <div class="caption-color-grid">
+        <div class="caption-color-item">
+          <span>Text</span>
+          <input type="color" class="color-picker" id="caption-text-color-pick" />
+          <input type="text" class="color-hex-input" id="caption-text-color" placeholder="#FFFFFF" maxlength="9" spellcheck="false" />
+        </div>
+        <div class="caption-color-item">
+          <span>Highlight</span>
+          <input type="color" class="color-picker" id="caption-highlight-color-pick" />
+          <input type="text" class="color-hex-input" id="caption-highlight-color" placeholder="#CFA84E" maxlength="9" spellcheck="false" />
+        </div>
+        <div class="caption-color-item">
+          <span>Pill BG</span>
+          <input type="color" class="color-picker" id="caption-highlight-bg-pick" />
+          <input type="text" class="color-hex-input" id="caption-highlight-bg" placeholder="#000000" maxlength="9" spellcheck="false" />
+        </div>
+        <div class="caption-color-item">
+          <span>Outline</span>
+          <input type="color" class="color-picker" id="caption-outline-color-pick" />
+          <input type="text" class="color-hex-input" id="caption-outline-color" placeholder="#000000" maxlength="9" spellcheck="false" />
+        </div>
+      </div>
+      <div class="setting-hint">Click swatch to pick, or type #RRGGBB / #RRGGBBAA</div>
+      <div class="caption-controls-grid">
+        <div class="setting-group">
+          <label>Font Size</label>
+          <input type="number" id="caption-font-size" min="24" max="120" placeholder="64" />
+        </div>
+        <div class="setting-group">
+          <label>Font Family</label>
+          <div class="font-family-wrap">
+            <input type="text" id="caption-font-family" placeholder="Roboto" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+        <div class="setting-group">
+          <label>Variant</label>
+          <select id="caption-font-variant"></select>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Settings panel -->
@@ -119,56 +183,6 @@
       <div class="setting-hint">Leave blank to save next to the input video.</div>
     </div>
 
-    <div class="settings-divider"></div>
-
-    <div class="setting-group">
-      <label>Caption Style</label>
-      <div class="caption-color-grid">
-        <div class="caption-color-item">
-          <span>Text</span>
-          <input type="color" class="color-picker" id="caption-text-color-pick" />
-          <input type="text"  class="color-hex-input" id="caption-text-color" placeholder="#FFFFFF" maxlength="9" spellcheck="false" />
-        </div>
-        <div class="caption-color-item">
-          <span>Highlight</span>
-          <input type="color" class="color-picker" id="caption-highlight-color-pick" />
-          <input type="text"  class="color-hex-input" id="caption-highlight-color" placeholder="#CFA84E" maxlength="9" spellcheck="false" />
-        </div>
-        <div class="caption-color-item">
-          <span>Pill BG</span>
-          <input type="color" class="color-picker" id="caption-highlight-bg-pick" />
-          <input type="text"  class="color-hex-input" id="caption-highlight-bg" placeholder="#000000" maxlength="9" spellcheck="false" />
-        </div>
-        <div class="caption-color-item">
-          <span>Outline</span>
-          <input type="color" class="color-picker" id="caption-outline-color-pick" />
-          <input type="text"  class="color-hex-input" id="caption-outline-color" placeholder="#000000" maxlength="9" spellcheck="false" />
-        </div>
-      </div>
-      <div class="setting-hint">Click swatch to pick, or type #RRGGBB / #RRGGBBAA</div>
-    </div>
-
-    <div class="setting-group">
-      <label>Font Size</label>
-      <input type="number" id="caption-font-size" min="24" max="120" placeholder="64" />
-    </div>
-
-    <div class="setting-group">
-      <label>Font Family</label>
-      <div class="font-family-wrap">
-        <input type="text" id="caption-font-family" placeholder="Roboto" autocomplete="off" spellcheck="false" />
-      </div>
-      <select id="caption-font-variant"></select>
-      <div class="font-controls">
-        <button id="download-font-btn" type="button">Download Font</button>
-        <button id="refresh-font-index-btn" type="button">Refresh Index</button>
-      </div>
-      <div class="setting-hint" id="font-family-status">Default: Roboto</div>
-    </div>
-
-    <div class="settings-buttons">
-      <button id="save-settings-btn">Save Settings</button>
-    </div>
   </div>
 
   <div id="font-popup" class="font-popup">

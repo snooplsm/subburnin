@@ -4,12 +4,19 @@ const progressFill    = document.getElementById('progress-bar-fill');
 const statusMsg       = document.getElementById('status-msg');
 const outputSection   = document.getElementById('output-section');
 const outputPath      = document.getElementById('output-path');
-const openBtn         = document.getElementById('open-btn');
-const resetBtn        = document.getElementById('reset-btn');
+const processCancelBtn = document.getElementById('process-cancel-btn');
+const mainContainer   = document.querySelector('main');
+const previewSection  = document.getElementById('preview-section');
+const previewStatus   = document.getElementById('preview-status');
+const previewVideoWrap = document.getElementById('preview-video-wrap');
+const previewVideo    = document.getElementById('preview-video');
+const previewCaptions = document.getElementById('preview-captions');
+const previewPlayBtn  = document.getElementById('preview-play-btn');
+const previewTimeline = document.getElementById('preview-timeline');
+const previewTime     = document.getElementById('preview-time');
 const settingsBtn     = document.getElementById('settings-btn');
 const settingsPanel   = document.getElementById('settings-panel');
 const overlay         = document.getElementById('overlay');
-const saveSettingsBtn = document.getElementById('save-settings-btn');
 const closeSettingsBtn= document.getElementById('close-settings-btn');
 const modelSizeInput  = document.getElementById('model-size-input');
 const languageInput   = document.getElementById('language-input');
@@ -30,8 +37,6 @@ const captionFontFamilyInput     = document.getElementById('caption-font-family'
 const captionFontVariantInput    = document.getElementById('caption-font-variant');
 const fontFamilyMenu             = document.getElementById('font-family-menu');
 const fontFamilyStatus           = document.getElementById('font-family-status');
-const downloadFontBtn            = document.getElementById('download-font-btn');
-const refreshFontIndexBtn        = document.getElementById('refresh-font-index-btn');
 const fontPopup                  = document.getElementById('font-popup');
 const fontPopupSearch            = document.getElementById('font-popup-search');
 const fontPopupClose             = document.getElementById('font-popup-close');
@@ -57,6 +62,8 @@ COLOR_PAIRS.forEach(({ pickId, hexId }) => {
   picker.addEventListener('input', () => {
     hexInput.value = picker.value.toUpperCase();
     hexInput.style.borderColor = '';
+    queueCaptionStyleAutosave();
+    refreshPreviewStyle();
   });
 
   // Hex field → picker (use first 6 digits for the swatch)
@@ -271,6 +278,8 @@ function applyFontSuggestionByIndex(index) {
   populateVariantSelect();
   closeFontMenu();
   refreshFontPreview();
+  refreshPreviewStyle();
+  queueCaptionStyleAutosave();
 }
 
 function updateFontStatus(text, isError = false) {
@@ -366,11 +375,7 @@ function openFontPopup() {
 }
 
 function updateFontButtonsState() {
-  const family = normalizeFontName(captionFontFamilyInput.value);
-  const variant = normalizeVariant(captionFontVariantInput.value || 'regular');
-  const isBusy = family && inFlightPreviewDownloads.has(`${family.toLowerCase()}::${variant}`);
-  const canDownload = family && !isBusy && selectedFontHasGoogleEntry(family) && !selectedFontIsDownloaded(family, variant);
-  downloadFontBtn.disabled = !canDownload;
+  // Manual font buttons were removed; debounce-driven auto-download handles this.
 }
 
 async function loadFontSources(forceRefresh = false) {
@@ -391,7 +396,9 @@ async function loadFontSources(forceRefresh = false) {
     downloadedFontFamilies = Array.isArray(downloaded)
       ? downloaded.filter((entry) => entry && entry.family).map((entry) => ({
           family: entry.family,
-          variant: normalizeVariant(entry.variant || 'regular')
+          variant: normalizeVariant(entry.variant || 'regular'),
+          file: entry.file || '',
+          path: entry.path || ''
         }))
       : [];
 
@@ -411,10 +418,46 @@ async function loadFontSources(forceRefresh = false) {
   refreshFontPreview({ allowAutoDownload: false });
 }
 
+async function ensureFontRuntimeState(forceRefresh = false) {
+  if (fontRuntimeReady && !forceRefresh) return;
+  if (fontRuntimePromise && !forceRefresh) {
+    await fontRuntimePromise;
+    return;
+  }
+
+  fontRuntimePromise = (async () => {
+    await loadFontSources(forceRefresh);
+    fontRuntimeReady = true;
+  })();
+
+  try {
+    await fontRuntimePromise;
+  } finally {
+    fontRuntimePromise = null;
+  }
+}
+
 const STEPS = ['extracting', 'transcribing', 'converting', 'burning'];
 
 let currentOutputPath = null;
 let currentTheme = 'dark';
+let isProcessingActive = false;
+let currentSourceVideoPath = null;
+let currentPreviewVideoPath = null;
+let previewSegments = [];
+let previewAssEvents = [];
+let previewTickTimer = null;
+let isPreviewSeeking = false;
+let wasPlayingBeforeSeek = false;
+let previewControlsHideTimer = null;
+let previewProxyInFlight = false;
+const previewProxyAttempted = new Set();
+const localPreviewFontFaceKeys = new Set();
+let localPreviewFontStyleEl = null;
+let captionStyleAutosaveTimer = null;
+let generalSettingsAutosaveTimer = null;
+let fontRuntimeReady = false;
+let fontRuntimePromise = null;
 let googleFontFamilies = [];
 let downloadedFontFamilies = [];
 let localFontFamilies = [];
@@ -444,6 +487,505 @@ function ensurePreviewWebFont(family) {
   link.href = href;
   document.head.appendChild(link);
   loadedPreviewWebFonts.add(normalized);
+}
+
+function toFileUrl(filePath) {
+  if (!filePath) return '';
+  const normalized = String(filePath).replace(/\\/g, '/');
+  const withPrefix = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`;
+  return encodeURI(withPrefix);
+}
+
+function formatPreviewTime(seconds) {
+  const safe = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(safe / 60);
+  const secs = safe - mins * 60;
+  return `${String(mins).padStart(2, '0')}:${secs.toFixed(2).padStart(5, '0')}`;
+}
+
+function getPreviewRenderMetrics() {
+  const wrap = document.getElementById('preview-video-wrap');
+  const wrapW = wrap ? wrap.clientWidth : (previewVideo.clientWidth || 0);
+  const wrapH = wrap ? wrap.clientHeight : (previewVideo.clientHeight || 0);
+  const vw = previewVideo.videoWidth || 0;
+  const vh = previewVideo.videoHeight || 0;
+
+  if (!wrapW || !wrapH || !vw || !vh) {
+    return { renderW: wrapW || 0, renderH: wrapH || 0, offsetX: 0, offsetY: 0 };
+  }
+
+  const scale = Math.min(wrapW / vw, wrapH / vh);
+  const renderW = vw * scale;
+  const renderH = vh * scale;
+  const offsetX = (wrapW - renderW) / 2;
+  const offsetY = (wrapH - renderH) / 2;
+  return { renderW, renderH, offsetX, offsetY };
+}
+
+function applyPreviewCaptionLayout() {
+  if (!previewCaptions) return;
+  const { renderW, renderH, offsetX, offsetY } = getPreviewRenderMetrics();
+  if (!renderW || !renderH) return;
+
+  const sidePad = Math.round(renderW * 0.05);
+  const bottomPad = Math.round(renderH * 0.05);
+  previewCaptions.style.left = `${Math.round(offsetX + sidePad)}px`;
+  previewCaptions.style.right = `${Math.round(offsetX + sidePad)}px`;
+  previewCaptions.style.bottom = `${Math.round(offsetY + bottomPad)}px`;
+}
+
+function sanitizeCssFontToken(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function getPreviewFontAlias(family, variant) {
+  return `SBPreview_${sanitizeCssFontToken(family)}_${sanitizeCssFontToken(variant || 'regular')}`;
+}
+
+function ensureLocalPreviewFontFace(family, variant) {
+  const fam = normalizeFontName(family).toLowerCase();
+  const varId = normalizeVariant(variant || 'regular');
+  const entry = downloadedFontFamilies.find((it) =>
+    normalizeFontName(it.family).toLowerCase() === fam && normalizeVariant(it.variant) === varId && it.path
+  );
+  if (!entry) return null;
+
+  const key = `${fam}::${varId}`;
+  const alias = getPreviewFontAlias(entry.family, entry.variant);
+  if (!localPreviewFontFaceKeys.has(key)) {
+    if (!localPreviewFontStyleEl) {
+      localPreviewFontStyleEl = document.createElement('style');
+      localPreviewFontStyleEl.id = 'preview-local-font-faces';
+      document.head.appendChild(localPreviewFontStyleEl);
+    }
+    const fontUrl = toFileUrl(entry.path);
+    localPreviewFontStyleEl.textContent += `
+@font-face {
+  font-family: '${alias}';
+  src: url('${fontUrl}') format('truetype');
+  font-display: swap;
+}
+`;
+    localPreviewFontFaceKeys.add(key);
+  }
+  return alias;
+}
+
+function assTimeToMs(ts) {
+  // ASS format: H:MM:SS.cc
+  const m = String(ts || '').trim().match(/^(\d+):(\d{2}):(\d{2})\.(\d{2})$/);
+  if (!m) return 0;
+  const h = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  const s = parseInt(m[3], 10);
+  const cs = parseInt(m[4], 10);
+  return (((h * 60 + mm) * 60 + s) * 1000) + cs * 10;
+}
+
+function parseAssDialogueLine(line) {
+  const m = line.match(/^Dialogue:\s*\d+,([^,]+),([^,]+),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)$/);
+  if (!m) return null;
+  return {
+    start: assTimeToMs(m[1]),
+    end: assTimeToMs(m[2]),
+    text: m[3] || ''
+  };
+}
+
+function parseAssPreviewChunks(text) {
+  const chunks = [];
+  const highlightRe = /\{\\1c[^}]*\\bord[^}]*\\3c[^}]*\\shad0\}([\s\S]*?)\{\\r\}/g;
+  let last = 0;
+  let m;
+  while ((m = highlightRe.exec(text)) !== null) {
+    if (m.index > last) {
+      const plain = text.slice(last, m.index).replace(/\{[^}]*\}/g, '');
+      if (plain) chunks.push({ text: plain, active: false });
+    }
+    chunks.push({ text: m[1] || '', active: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) {
+    const tail = text.slice(last).replace(/\{[^}]*\}/g, '');
+    if (tail) chunks.push({ text: tail, active: false });
+  }
+  if (chunks.length === 0) {
+    const plain = text.replace(/\{[^}]*\}/g, '');
+    if (plain) chunks.push({ text: plain, active: false });
+  }
+  return chunks;
+}
+
+function parseAssPreviewEvents(assContent) {
+  const lines = String(assContent || '').split(/\r?\n/);
+  const events = [];
+  for (const line of lines) {
+    if (!line.startsWith('Dialogue:')) continue;
+    const dlg = parseAssDialogueLine(line);
+    if (!dlg || dlg.end <= dlg.start) continue;
+    events.push({
+      start: dlg.start,
+      end: dlg.end,
+      chunks: parseAssPreviewChunks(dlg.text)
+    });
+  }
+  return events;
+}
+
+function extFromPath(filePath) {
+  const m = String(filePath || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? `.${m[1]}` : '';
+}
+
+function mimeFromExt(ext) {
+  const map = {
+    '.mp4': 'video/mp4',
+    '.m4v': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.mkv': 'video/x-matroska',
+    '.avi': 'video/x-msvideo'
+  };
+  return map[ext] || 'video/mp4';
+}
+
+function likelyNeedsPreviewProxy(videoPath) {
+  const ext = extFromPath(videoPath);
+  if (ext === '.mkv' || ext === '.avi') return true;
+  const mime = mimeFromExt(ext);
+  const support = previewVideo.canPlayType(mime);
+  return !support;
+}
+
+function getPreviewStyle() {
+  const variant = parseVariant(captionFontVariantInput.value || 'regular');
+  const fontFamily = normalizeFontName(captionFontFamilyInput.value) || 'Roboto';
+  ensurePreviewWebFont(fontFamily);
+  const localAlias = ensureLocalPreviewFontFace(fontFamily, captionFontVariantInput.value || 'regular');
+  const renderFamily = localAlias || fontFamily;
+  return {
+    fontFamily: renderFamily,
+    fontSize: parseInt(captionFontSizeInput.value, 10) || 64,
+    textColor: captionTextColorInput.value || '#FFFFFF',
+    highlightColor: captionHighlightColorInput.value || '#CFA84E',
+    highlightBg: captionHighlightBgInput.value || '#000000',
+    outlineColor: captionOutlineColorInput.value || '#000000',
+    weight: variant.weight || 400,
+    italic: variant.italic
+  };
+}
+
+function getCurrentCaptionStylePartial() {
+  return {
+    caption_text_color: captionTextColorInput.value || '#FFFFFF',
+    caption_highlight_color: captionHighlightColorInput.value || '#CFA84E',
+    caption_highlight_bg: captionHighlightBgInput.value || '#000000',
+    caption_outline_color: captionOutlineColorInput.value || '#000000',
+    caption_font_size: parseInt(captionFontSizeInput.value, 10) || 64,
+    caption_font_family: normalizeFontName(captionFontFamilyInput.value) || 'Roboto',
+    caption_font_variant: normalizeVariant(captionFontVariantInput.value || 'regular')
+  };
+}
+
+function queueCaptionStyleAutosave() {
+  if (captionStyleAutosaveTimer) clearTimeout(captionStyleAutosaveTimer);
+  captionStyleAutosaveTimer = setTimeout(() => {
+    captionStyleAutosaveTimer = null;
+    window.subburnin.setConfig(getCurrentCaptionStylePartial()).catch(() => {});
+  }, 250);
+}
+
+function syncColorPickersFromHexInputs() {
+  COLOR_PAIRS.forEach(({ pickId, hexId }) => {
+    const picker = document.getElementById(pickId);
+    const hexInput = document.getElementById(hexId);
+    if (picker && hexInput && isValidHex(hexInput.value)) {
+      picker.value = hexInput.value.slice(0, 7);
+    }
+  });
+}
+
+function queueGeneralSettingsAutosave() {
+  if (generalSettingsAutosaveTimer) clearTimeout(generalSettingsAutosaveTimer);
+  generalSettingsAutosaveTimer = setTimeout(() => {
+    generalSettingsAutosaveTimer = null;
+    window.subburnin.setConfig({
+      whisper_threads: parseInt(threadsInput.value, 10) || 4,
+      output_dir: outputDirInput.value.trim()
+    }).catch(() => {});
+  }, 300);
+}
+
+function applyCaptionStyleFromConfig(config) {
+  if (!config) return;
+  captionTextColorInput.value = config.caption_text_color || '#FFFFFF';
+  captionHighlightColorInput.value = config.caption_highlight_color || '#CFA84E';
+  captionHighlightBgInput.value = config.caption_highlight_bg || '#000000';
+  captionOutlineColorInput.value = config.caption_outline_color || '#000000';
+  captionFontSizeInput.value = config.caption_font_size || 64;
+  captionFontFamilyInput.value = config.caption_font_family || 'Roboto';
+  captionFontVariantInput.value = normalizeVariant(config.caption_font_variant || 'regular');
+  fontPopupSearch.value = captionFontFamilyInput.value;
+  syncColorPickersFromHexInputs();
+}
+
+function refreshPreviewStyle() {
+  if (!previewSection.classList.contains('visible')) return;
+  const ms = (previewVideo.currentTime || 0) * 1000;
+  renderPreviewAt(ms);
+}
+
+function mergePreviewTokens(tokens) {
+  const words = [];
+  for (const token of (tokens || [])) {
+    if (!token || !token.text) continue;
+    if (token.text.startsWith('[_') || token.text.trim() === '') continue;
+
+    const trimmed = token.text.trim();
+    const hasSpace = token.text.startsWith(' ');
+    const isPuncOrSymbol = /^[^a-zA-ZÀ-ÿ0-9]/.test(trimmed);
+    const isAttached = words.length > 0 && !hasSpace && isPuncOrSymbol;
+
+    if (isAttached) {
+      words[words.length - 1].text += trimmed;
+      words[words.length - 1].end = Number(token.offsets?.to) || words[words.length - 1].end;
+    } else {
+      const display = words.length > 0 && !hasSpace ? ` ${trimmed}` : token.text;
+      const start = Number(token.offsets?.from) || 0;
+      const end = Number(token.offsets?.to) || start + 1;
+      words.push({ text: display, start, end });
+    }
+  }
+  return words;
+}
+
+function buildPreviewSegments(rawSegments) {
+  const out = [];
+  for (const segment of (rawSegments || [])) {
+    if (!segment || !segment.offsets) continue;
+    const segStart = Math.max(0, Number(segment.offsets.from) || 0);
+    const segEnd = Math.max(segStart + 1, Number(segment.offsets.to) || segStart + 1);
+    const words = mergePreviewTokens(segment.tokens);
+    if (words.length === 0) continue;
+
+    for (let i = 0; i < words.length; i++) {
+      const nextStart = i + 1 < words.length ? words[i + 1].start : segEnd;
+      words[i].start = Math.max(segStart, words[i].start);
+      words[i].end = Math.max(words[i].start + 1, Math.min(segEnd, nextStart));
+    }
+
+    out.push({
+      start: segStart,
+      end: segEnd,
+      words,
+      text: words.map((w) => w.text).join('')
+    });
+  }
+  return out;
+}
+
+function findActivePreviewSegment(timeMs) {
+  if (previewSegments.length === 0) return null;
+  const idx = previewSegments.findIndex((segment) => timeMs >= segment.start && timeMs < segment.end);
+  if (idx >= 0) return previewSegments[idx];
+  for (let i = previewSegments.length - 1; i >= 0; i--) {
+    if (timeMs >= previewSegments[i].start) return previewSegments[i];
+  }
+  return previewSegments[0];
+}
+
+function findActiveAssEvent(timeMs) {
+  if (previewAssEvents.length === 0) return null;
+  const idx = previewAssEvents.findIndex((event) => timeMs >= event.start && timeMs < event.end);
+  if (idx >= 0) return previewAssEvents[idx];
+  return null;
+}
+
+function renderPreviewAt(timeMs) {
+  if (!previewCaptions) return;
+  applyPreviewCaptionLayout();
+  const assEvent = findActiveAssEvent(timeMs);
+  const segment = assEvent ? null : findActivePreviewSegment(timeMs);
+  if (!assEvent && !segment) {
+    previewCaptions.innerHTML = '';
+    return;
+  }
+
+  const style = getPreviewStyle();
+  const { renderH } = getPreviewRenderMetrics();
+  const previewHeight = renderH || previewVideo.clientHeight || 540;
+  // Neutral mapping from ASS PlayResY (1080) into current preview viewport.
+  const assScalePx = (style.fontSize * previewHeight) / 1080;
+  const previewFontPx = Math.max(12, Math.round(assScalePx));
+  const line = document.createElement('div');
+  line.className = 'preview-caption-line';
+  line.style.fontFamily = `"${style.fontFamily}", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  line.style.fontSize = `${previewFontPx}px`;
+  line.style.color = style.textColor;
+  line.style.fontWeight = String(style.weight);
+  line.style.fontStyle = style.italic ? 'italic' : 'normal';
+  line.style.textShadow = `0 0 1px ${style.outlineColor}, 0 0 2px ${style.outlineColor}, 0 1px 2px rgba(0,0,0,.65)`;
+
+  if (assEvent) {
+    assEvent.chunks.forEach((chunk) => {
+      const span = document.createElement('span');
+      span.className = `preview-word${chunk.active ? ' active' : ''}`;
+      span.textContent = chunk.text;
+      if (chunk.active) {
+        span.style.color = style.highlightColor;
+        span.style.background = style.highlightBg;
+      }
+      line.appendChild(span);
+    });
+  } else {
+    const activeWordIdx = segment.words.findIndex((word) => timeMs >= word.start && timeMs < word.end);
+    segment.words.forEach((word, idx) => {
+      const span = document.createElement('span');
+      span.className = `preview-word${idx === activeWordIdx ? ' active' : ''}`;
+      span.textContent = word.text;
+      if (idx === activeWordIdx) {
+        span.style.color = style.highlightColor;
+        span.style.background = style.highlightBg;
+      }
+      line.appendChild(span);
+    });
+  }
+
+  previewCaptions.innerHTML = '';
+  previewCaptions.appendChild(line);
+}
+
+function updatePreviewTimeUi() {
+  if (!previewVideo) return;
+  const current = previewVideo.currentTime || 0;
+  const duration = Number.isFinite(previewVideo.duration) ? previewVideo.duration : 0;
+
+  if (!isPreviewSeeking && previewTimeline) {
+    previewTimeline.value = String(Math.round(current * 1000));
+  }
+  if (previewTime) {
+    previewTime.textContent = `${formatPreviewTime(current)} / ${formatPreviewTime(duration)}`;
+  }
+  renderPreviewAt(current * 1000);
+}
+
+function stopPreviewTick() {
+  if (!previewTickTimer) return;
+  cancelAnimationFrame(previewTickTimer);
+  previewTickTimer = null;
+}
+
+function showPreviewControlsTemporarily() {
+  if (!previewVideoWrap) return;
+  previewVideoWrap.classList.add('controls-visible');
+  if (previewControlsHideTimer) clearTimeout(previewControlsHideTimer);
+  previewControlsHideTimer = setTimeout(() => {
+    previewVideoWrap.classList.remove('controls-visible');
+    previewControlsHideTimer = null;
+  }, 1200);
+}
+
+function clearPreviewControlsTimer() {
+  if (previewControlsHideTimer) {
+    clearTimeout(previewControlsHideTimer);
+    previewControlsHideTimer = null;
+  }
+}
+
+function startPreviewTick() {
+  stopPreviewTick();
+  const loop = () => {
+    updatePreviewTimeUi();
+    if (!previewVideo.paused && !previewVideo.ended) {
+      previewTickTimer = requestAnimationFrame(loop);
+    } else {
+      previewTickTimer = null;
+    }
+  };
+  previewTickTimer = requestAnimationFrame(loop);
+}
+
+async function ensurePreviewProxy(videoPath) {
+  if (!videoPath || previewProxyInFlight) return null;
+  const key = String(videoPath);
+  if (previewProxyAttempted.has(key)) return null;
+  previewProxyAttempted.add(key);
+  previewProxyInFlight = true;
+
+  showPreviewStatus('Creating preview-compatible video (veryfast, low bitrate)…');
+  try {
+    const result = await window.subburnin.createPreviewProxy(videoPath);
+    if (result && result.success && result.proxyPath) return result.proxyPath;
+    showPreviewStatus(`Preview proxy failed: ${result?.error || 'unknown error'}`);
+    return null;
+  } catch (err) {
+    showPreviewStatus(`Preview proxy failed: ${err.message}`);
+    return null;
+  } finally {
+    previewProxyInFlight = false;
+  }
+}
+
+async function applyPreviewVideoSource(videoPath) {
+  if (!previewVideo || !videoPath) return;
+  currentPreviewVideoPath = videoPath;
+  let sourcePath = videoPath;
+  if (likelyNeedsPreviewProxy(videoPath)) {
+    const proxyPath = await ensurePreviewProxy(videoPath);
+    if (proxyPath) sourcePath = proxyPath;
+  }
+  if (sourcePath !== videoPath) {
+    showPreviewStatus('Using preview proxy (veryfast, low bitrate) for playback');
+  }
+
+  const src = toFileUrl(sourcePath);
+  if (previewVideo.src !== src || previewVideo.dataset.sourcePath !== sourcePath) {
+    previewVideo.dataset.sourcePath = sourcePath;
+    previewVideo.dataset.originalPath = videoPath;
+    previewVideo.src = src;
+    previewVideo.load();
+  }
+}
+
+function showPreviewStatus(text) {
+  if (previewStatus) previewStatus.textContent = text;
+}
+
+function setupPreviewFromTranscription(videoPath, segments) {
+  currentSourceVideoPath = videoPath || currentSourceVideoPath;
+  if (currentSourceVideoPath) applyPreviewVideoSource(currentSourceVideoPath);
+
+  previewSegments = buildPreviewSegments(segments);
+  previewSection.classList.add('visible');
+  if (previewSegments.length > 0) {
+    showPreviewStatus(`Ready · ${previewSegments.length} caption segments`);
+  } else {
+    showPreviewStatus('Ready · no caption segments found');
+  }
+  updatePreviewTimeUi();
+}
+
+function setupPreviewFromAss(videoPath, assContent) {
+  currentSourceVideoPath = videoPath || currentSourceVideoPath;
+  if (currentSourceVideoPath) applyPreviewVideoSource(currentSourceVideoPath);
+  previewAssEvents = parseAssPreviewEvents(assContent);
+  if (previewAssEvents.length > 0) {
+    showPreviewStatus(`ASS preview ready · ${previewAssEvents.length} events`);
+  } else {
+    showPreviewStatus('ASS preview ready');
+  }
+  updatePreviewTimeUi();
+}
+
+function enterWorkMode() {
+  if (!mainContainer) return;
+  mainContainer.classList.add('work-mode');
+  mainContainer.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function leaveWorkMode() {
+  if (!mainContainer) return;
+  mainContainer.classList.remove('work-mode');
 }
 
 // ========================================
@@ -563,7 +1105,28 @@ document.addEventListener('drop', (e) => {
 // Processing
 // ========================================
 
-function startProcessing(filePath) {
+async function startProcessing(filePath) {
+  if (isProcessingActive) {
+    await window.subburnin.cancelProcessing().catch(() => {});
+    resetForNextRun();
+  }
+  try {
+    const config = await window.subburnin.getConfig();
+    applyCaptionStyleFromConfig(config);
+    await ensureFontRuntimeState();
+  } catch {}
+  isProcessingActive = true;
+  setProcessingCancelVisible(false);
+  enterWorkMode();
+  currentSourceVideoPath = filePath;
+  applyPreviewVideoSource(filePath);
+  previewSegments = [];
+  previewAssEvents = [];
+  previewCaptions.innerHTML = '';
+  dropZone.style.display = 'none';
+  previewSection.classList.add('visible');
+  showPreviewStatus('Transcribing… preview will appear once captions are ready.');
+
   dropZone.classList.add('processing');
   progressSection.classList.add('visible');
   outputSection.classList.remove('visible');
@@ -576,19 +1139,35 @@ function startProcessing(filePath) {
   window.subburnin.processVideo(filePath, (data) => {
     updateProgress(data);
   }).then((result) => {
+    isProcessingActive = false;
+    setProcessingCancelVisible(false);
     if (result.success) {
       currentOutputPath = result.outputPath;
       showSuccess(result.outputPath);
+    } else if (result.cancelled) {
+      showError('Processing cancelled.');
+      setTimeout(() => resetForNextRun(), 120);
     } else {
       showError(result.error);
     }
   }).catch((err) => {
+    isProcessingActive = false;
+    setProcessingCancelVisible(false);
     showError(err.message || String(err));
   });
 }
 
 function updateProgress(data) {
   const { stage, percent, message } = data;
+  const cancelStages = new Set(['transcribing', 'converting', 'burning']);
+  setProcessingCancelVisible(isProcessingActive && cancelStages.has(stage));
+
+  if (data.preview && Array.isArray(data.preview.segments)) {
+    setupPreviewFromTranscription(data.preview.videoPath || currentSourceVideoPath, data.preview.segments);
+  }
+  if (data.previewAss && data.previewAss.assContent) {
+    setupPreviewFromAss(data.previewAss.videoPath || currentSourceVideoPath, data.previewAss.assContent);
+  }
 
   if (percent !== undefined) {
     progressFill.style.width = `${percent}%`;
@@ -629,32 +1208,201 @@ function showSuccess(filePath) {
   statusMsg.textContent = 'Subtitles burned successfully!';
   outputPath.textContent = filePath;
   outputSection.classList.add('visible');
+  dropZone.classList.remove('processing');
+  isProcessingActive = false;
+  setProcessingCancelVisible(false);
+  showPreviewStatus('Ready · showing transcription preview');
 }
 
 function showError(msg) {
   statusMsg.textContent = `Error: ${msg}`;
   statusMsg.className = 'error';
   dropZone.classList.remove('processing');
+  isProcessingActive = false;
+  setProcessingCancelVisible(false);
+  showPreviewStatus('Preview unavailable due to processing error');
 }
 
-// ========================================
-// Output buttons
-// ========================================
+function setProcessingCancelVisible(visible) {
+  if (!processCancelBtn) return;
+  processCancelBtn.classList.toggle('visible', Boolean(visible));
+  processCancelBtn.disabled = false;
+}
 
-openBtn.addEventListener('click', () => {
-  if (currentOutputPath) {
-    window.subburnin.openOutputDir(currentOutputPath);
-  }
-});
-
-resetBtn.addEventListener('click', () => {
+function resetForNextRun() {
+  dropZone.style.display = '';
   dropZone.classList.remove('processing');
   progressSection.classList.remove('visible');
   outputSection.classList.remove('visible');
+  previewSection.classList.remove('visible');
   statusMsg.textContent = '';
+  statusMsg.className = '';
   resetSteps();
   currentOutputPath = null;
+  currentSourceVideoPath = null;
+  currentPreviewVideoPath = null;
+  previewSegments = [];
+  previewAssEvents = [];
+  isProcessingActive = false;
+  setProcessingCancelVisible(false);
+  stopPreviewTick();
+  previewVideo.pause();
+  previewVideo.removeAttribute('src');
+  previewVideo.dataset.sourcePath = '';
+  previewVideo.dataset.originalPath = '';
+  previewVideo.load();
+  previewCaptions.innerHTML = '';
+  previewProxyAttempted.clear();
+  previewProxyInFlight = false;
+  previewVideoWrap.classList.remove('controls-visible');
+  clearPreviewControlsTimer();
+  showPreviewStatus('Waiting for transcription…');
   window.subburnin.removeProgressListener();
+  leaveWorkMode();
+}
+
+// ========================================
+// Output actions
+// ========================================
+
+outputPath.addEventListener('click', () => {
+  if (currentOutputPath) {
+    window.subburnin.revealFileInFolder(currentOutputPath);
+  }
+});
+
+processCancelBtn.addEventListener('click', async () => {
+  if (!isProcessingActive) return;
+  processCancelBtn.disabled = true;
+  statusMsg.textContent = 'Cancelling processing...';
+  statusMsg.className = '';
+  try {
+    await window.subburnin.cancelProcessing();
+  } catch {}
+});
+
+previewPlayBtn.addEventListener('click', async () => {
+  if (!previewVideo.src) return;
+  if (previewVideo.paused) {
+    try {
+      await previewVideo.play();
+      previewPlayBtn.textContent = '❚❚';
+      startPreviewTick();
+    } catch {
+      showPreviewStatus('Could not start preview playback');
+    }
+  } else {
+    previewVideo.pause();
+    previewPlayBtn.textContent = '▶';
+    stopPreviewTick();
+  }
+});
+
+previewTimeline.addEventListener('input', () => {
+  if (!previewVideo.src) return;
+  const target = Number(previewTimeline.value || 0) / 1000;
+  if (typeof previewVideo.fastSeek === 'function') {
+    previewVideo.fastSeek(target);
+  } else {
+    previewVideo.currentTime = target;
+  }
+  if (previewTime) {
+    const duration = Number.isFinite(previewVideo.duration) ? previewVideo.duration : 0;
+    previewTime.textContent = `${formatPreviewTime(target)} / ${formatPreviewTime(duration)}`;
+  }
+  renderPreviewAt(target * 1000);
+  updatePreviewTimeUi();
+});
+
+previewTimeline.addEventListener('change', () => {
+  if (!previewVideo.src) return;
+  const target = Number(previewTimeline.value || 0) / 1000;
+  previewVideo.currentTime = target;
+  isPreviewSeeking = false;
+  if (wasPlayingBeforeSeek) {
+    previewVideo.play().catch(() => {});
+  }
+  wasPlayingBeforeSeek = false;
+  updatePreviewTimeUi();
+});
+
+previewTimeline.addEventListener('pointerdown', () => {
+  if (!previewVideo.src) return;
+  wasPlayingBeforeSeek = !previewVideo.paused && !previewVideo.ended;
+  isPreviewSeeking = true;
+  previewVideo.pause();
+});
+
+previewTimeline.addEventListener('pointerup', () => {
+  if (!previewVideo.src) return;
+  isPreviewSeeking = false;
+  if (wasPlayingBeforeSeek) {
+    previewVideo.play().catch(() => {});
+  }
+  wasPlayingBeforeSeek = false;
+});
+
+previewVideo.addEventListener('loadedmetadata', () => {
+  const duration = Number.isFinite(previewVideo.duration) ? previewVideo.duration : 0;
+  previewTimeline.max = String(Math.max(1, Math.round(duration * 1000)));
+  previewTimeline.value = '0';
+  previewPlayBtn.textContent = '▶';
+  previewVideoWrap.classList.remove('is-playing');
+  previewVideoWrap.classList.add('controls-visible');
+  clearPreviewControlsTimer();
+  applyPreviewCaptionLayout();
+  updatePreviewTimeUi();
+});
+
+previewVideo.addEventListener('play', () => {
+  previewPlayBtn.textContent = '❚❚';
+  previewVideoWrap.classList.add('is-playing');
+  showPreviewControlsTemporarily();
+  startPreviewTick();
+});
+
+previewVideo.addEventListener('pause', () => {
+  previewPlayBtn.textContent = '▶';
+  previewVideoWrap.classList.remove('is-playing');
+  previewVideoWrap.classList.add('controls-visible');
+  clearPreviewControlsTimer();
+  stopPreviewTick();
+  updatePreviewTimeUi();
+});
+
+previewVideo.addEventListener('ended', () => {
+  previewPlayBtn.textContent = '▶';
+  previewVideoWrap.classList.remove('is-playing');
+  previewVideoWrap.classList.add('controls-visible');
+  clearPreviewControlsTimer();
+  stopPreviewTick();
+  updatePreviewTimeUi();
+});
+
+previewVideoWrap.addEventListener('mousemove', () => {
+  if (previewVideo.paused || previewVideo.ended) return;
+  showPreviewControlsTemporarily();
+});
+
+previewVideo.addEventListener('timeupdate', updatePreviewTimeUi);
+
+window.addEventListener('resize', () => {
+  applyPreviewCaptionLayout();
+  updatePreviewTimeUi();
+});
+
+previewVideo.addEventListener('error', async () => {
+  const original = previewVideo.dataset.originalPath || currentPreviewVideoPath || currentSourceVideoPath;
+  if (!original) return;
+  const proxyPath = await ensurePreviewProxy(original);
+  if (proxyPath) {
+    const currentTime = previewVideo.currentTime || 0;
+    previewVideo.dataset.sourcePath = proxyPath;
+    previewVideo.src = toFileUrl(proxyPath);
+    previewVideo.load();
+    previewVideo.currentTime = currentTime;
+    showPreviewStatus('Using preview proxy (veryfast, low bitrate) for playback');
+  }
 });
 
 // ========================================
@@ -680,15 +1428,8 @@ async function openSettings() {
   captionFontSizeInput.value       = config.caption_font_size       || 64;
   captionFontFamilyInput.value     = config.caption_font_family     || 'Roboto';
   captionFontVariantInput.value    = normalizeVariant(config.caption_font_variant || 'regular');
-
-  // Sync color pickers to current hex values
-  COLOR_PAIRS.forEach(({ pickId, hexId }) => {
-    const picker   = document.getElementById(pickId);
-    const hexInput = document.getElementById(hexId);
-    if (picker && hexInput && isValidHex(hexInput.value)) {
-      picker.value = hexInput.value.slice(0, 7);
-    }
-  });
+  fontPopupSearch.value = captionFontFamilyInput.value;
+  syncColorPickersFromHexInputs();
 
   updateModelStatus(config.model_downloaded, config.whisper_model_size, config.whisper_language);
   await loadFontSources();
@@ -728,6 +1469,10 @@ function getModelLabel(size, language) {
 // Refresh model status when dropdowns change
 modelSizeInput.addEventListener('change', checkModelStatus);
 languageInput.addEventListener('change', checkModelStatus);
+threadsInput.addEventListener('input', queueGeneralSettingsAutosave);
+threadsInput.addEventListener('change', queueGeneralSettingsAutosave);
+outputDirInput.addEventListener('input', queueGeneralSettingsAutosave);
+outputDirInput.addEventListener('change', queueGeneralSettingsAutosave);
 
 async function checkModelStatus() {
   // Save current selections then fetch updated config
@@ -796,23 +1541,6 @@ async function startModelDownload() {
   });
 }
 
-saveSettingsBtn.addEventListener('click', async () => {
-  await window.subburnin.setConfig({
-    whisper_model_size:      modelSizeInput.value,
-    whisper_language:        languageInput.value,
-    whisper_threads:         parseInt(threadsInput.value, 10) || 4,
-    output_dir:              outputDirInput.value.trim(),
-    caption_text_color:      captionTextColorInput.value,
-    caption_highlight_color: captionHighlightColorInput.value,
-    caption_highlight_bg:    captionHighlightBgInput.value,
-    caption_outline_color:   captionOutlineColorInput.value,
-    caption_font_size:       parseInt(captionFontSizeInput.value, 10) || 64,
-    caption_font_family:     normalizeFontName(captionFontFamilyInput.value) || 'Roboto',
-    caption_font_variant:    normalizeVariant(captionFontVariantInput.value || 'regular')
-  });
-  closeSettings();
-});
-
 captionFontFamilyInput.addEventListener('focus', () => {
   openFontPopup();
 });
@@ -827,6 +1555,7 @@ captionFontFamilyInput.addEventListener('input', () => {
   renderFontSuggestions();
   updateFontButtonsState();
   refreshFontPreview();
+  queueCaptionStyleAutosave();
 });
 
 function handleFontPickerKeydown(event) {
@@ -873,6 +1602,7 @@ fontPopupSearch.addEventListener('input', () => {
   renderFontSuggestions();
   updateFontButtonsState();
   refreshFontPreview();
+  queueCaptionStyleAutosave();
 });
 
 fontPopupClose.addEventListener('click', closeFontMenu);
@@ -891,31 +1621,30 @@ fontFamilyMenu.addEventListener('mousedown', (event) => {
   closeFontMenu();
   updateFontButtonsState();
   refreshFontPreview();
+  refreshPreviewStyle();
+  queueCaptionStyleAutosave();
 });
 
 captionFontVariantInput.addEventListener('change', () => {
   renderFontSuggestions();
   updateFontButtonsState();
   refreshFontPreview();
+  refreshPreviewStyle();
+  queueCaptionStyleAutosave();
 });
 
-refreshFontIndexBtn.addEventListener('click', async () => {
-  refreshFontIndexBtn.disabled = true;
-  updateFontStatus('Refreshing Google Fonts index...');
-  try {
-    await loadFontSources(true);
-  } catch (err) {
-    updateFontStatus(`Could not refresh index: ${err.message}`, true);
-  } finally {
-    refreshFontIndexBtn.disabled = false;
-  }
-});
-
-downloadFontBtn.addEventListener('click', async () => {
-  const family = normalizeFontName(captionFontFamilyInput.value);
-  if (!family) return;
-  await downloadFontFamily(family, { variant: captionFontVariantInput.value });
-  refreshFontPreview({ allowAutoDownload: false });
+[
+  captionTextColorInput,
+  captionHighlightColorInput,
+  captionHighlightBgInput,
+  captionOutlineColorInput,
+  captionFontSizeInput,
+  captionFontFamilyInput
+].forEach((input) => {
+  input.addEventListener('input', refreshPreviewStyle);
+  input.addEventListener('change', refreshPreviewStyle);
+  input.addEventListener('input', queueCaptionStyleAutosave);
+  input.addEventListener('change', queueCaptionStyleAutosave);
 });
 
 // ========================================
@@ -924,5 +1653,16 @@ downloadFontBtn.addEventListener('click', async () => {
 
 (async () => {
   const config = await window.subburnin.getConfig();
+  applyCaptionStyleFromConfig(config);
   applyTheme(config.theme || 'dark');
+  ensureFontRuntimeState().then(() => {
+    populateVariantSelect(captionFontVariantInput.value);
+    renderFontSuggestions();
+    refreshFontPreview({ allowAutoDownload: false });
+    refreshPreviewStyle();
+  }).catch(() => {});
+  // Periodic background refresh so users don't need a manual refresh button.
+  setInterval(() => {
+    ensureFontRuntimeState(true).catch(() => {});
+  }, 6 * 60 * 60 * 1000);
 })();
