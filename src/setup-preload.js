@@ -18,11 +18,32 @@ contextBridge.exposeInMainWorld('setup', {
     return ipcRenderer.invoke('ipc:get-config');
   },
 
+  checkDiarizationRuntime() {
+    return ipcRenderer.invoke('ipc:check-diarization');
+  },
+
+  installDiarizationRuntime(onProgress) {
+    ipcRenderer.on('diarization:install-progress', (_, data) => onProgress(data));
+    return ipcRenderer.invoke('ipc:install-diarization');
+  },
+
+  removeDiarizationInstallProgressListener() {
+    ipcRenderer.removeAllListeners('diarization:install-progress');
+  },
+
+  cancelDiarizationInstall() {
+    return ipcRenderer.invoke('ipc:cancel-diarization-install');
+  },
+
   saveModelConfig(size, language) {
     return ipcRenderer.invoke('ipc:set-config', {
       whisper_model_size: size,
       whisper_language: language
     });
+  },
+
+  setConfig(partial) {
+    return ipcRenderer.invoke('ipc:set-config', partial);
   },
 
   setCustomPath(step, value) {

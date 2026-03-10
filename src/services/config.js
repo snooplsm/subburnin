@@ -18,7 +18,7 @@ const DEFAULTS = {
   caption_font_size:       64,
   caption_font_family:     'Roboto',
   caption_font_variant:    'regular',
-  diarization_enabled: false,
+  diarization_enabled: true,
   diarization_runtime_ready: false,
   diarization_runtime_path: '',
   diarization_model_info: {}

@@ -51,7 +51,7 @@ async function checkDiarizationRuntime() {
 
 async function installDiarizationRuntime(onProgress = () => {}, signal = null) {
   ensureDiarizationDir();
-  onProgress({ stage: 'check', message: 'Checking Python runtime...' });
+  onProgress({ stage: 'check', message: 'Checking for local multi-speaker runtime...' });
 
   const py = await probePython3();
   if (!py.ok) {
@@ -66,9 +66,17 @@ async function installDiarizationRuntime(onProgress = () => {}, signal = null) {
     throw err;
   }
 
-  onProgress({ stage: 'prepare', message: 'Preparing diarization runtime directory...' });
+  const markerAlreadyExists = fs.existsSync(RUNTIME_MARKER);
+  onProgress({ stage: 'prepare', message: 'Found Python. Configuring runtime metadata...' });
+  let existingInstalledAt = null;
+  if (markerAlreadyExists) {
+    try {
+      existingInstalledAt = JSON.parse(fs.readFileSync(RUNTIME_MARKER, 'utf8')).installedAt || null;
+    } catch {}
+  }
+
   const marker = {
-    installedAt: new Date().toISOString(),
+    installedAt: existingInstalledAt || new Date().toISOString(),
     pythonVersion: py.version,
     version: 1
   };
@@ -81,11 +89,13 @@ async function installDiarizationRuntime(onProgress = () => {}, signal = null) {
     diarization_model_info: marker
   });
 
-  onProgress({ stage: 'done', message: 'Diarization runtime ready.' });
+  onProgress({ stage: 'done', message: `Found Python ${py.version}. Multi-speaker runtime ready.` });
   return {
     success: true,
     runtimePath,
-    pythonVersion: py.version
+    pythonVersion: py.version,
+    found: true,
+    alreadyConfigured: markerAlreadyExists
   };
 }
 

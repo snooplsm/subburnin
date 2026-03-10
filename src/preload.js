@@ -1,9 +1,16 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('subburnin', {
-  processVideo(filePath, onProgress) {
+  processVideo(filePath, optionsOrOnProgress, maybeOnProgress) {
+    const onProgress = typeof optionsOrOnProgress === 'function'
+      ? optionsOrOnProgress
+      : maybeOnProgress;
+    const options = typeof optionsOrOnProgress === 'function'
+      ? {}
+      : (optionsOrOnProgress || {});
+
     ipcRenderer.on('progress', (event, data) => onProgress(data));
-    return ipcRenderer.invoke('ipc:process-video', filePath);
+    return ipcRenderer.invoke('ipc:process-video', filePath, options);
   },
 
   removeProgressListener() {

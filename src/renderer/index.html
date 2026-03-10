@@ -75,7 +75,14 @@
     <section id="caption-controls">
       <div class="caption-controls-head">
         <h3>Caption Controls</h3>
-        <div class="setting-hint" id="font-family-status">Default: Roboto</div>
+        <div class="caption-controls-head-right">
+          <label class="switch-wrap" for="main-diarization-enabled-toggle">
+            <input id="main-diarization-enabled-toggle" type="checkbox" />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Detect multi-speakers for next video</span>
+          </label>
+          <div class="setting-hint" id="font-family-status"></div>
+        </div>
       </div>
       <div class="caption-color-grid">
         <div class="caption-color-item">
@@ -181,6 +188,29 @@
       <label>Output Directory</label>
       <input type="text" id="output-dir-input" placeholder="(same as video)" />
       <div class="setting-hint">Leave blank to save next to the input video.</div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="setting-group">
+      <label>Multi-speaker Runtime</label>
+      <div class="model-status">
+        <div class="model-status-dot" id="diarization-status-dot"></div>
+        <div class="model-status-text" id="diarization-status-text">Checking...</div>
+        <button id="setup-diarization-btn" type="button">Set up</button>
+        <button id="cancel-diarization-setup-btn" type="button" style="display:none">Cancel</button>
+      </div>
+      <div class="setting-hint">Detects speaker turns for speaker-aware styling. Optional.</div>
+    </div>
+
+    <div class="setting-group">
+      <label>Font Index</label>
+      <div class="model-status">
+        <div class="model-status-dot ready"></div>
+        <div class="model-status-text" id="font-index-status">Checking index...</div>
+        <button id="refresh-font-index-btn" type="button">Update</button>
+      </div>
+      <div class="setting-hint">Refreshes Google Fonts index metadata used by font search.</div>
     </div>
 
   </div>
