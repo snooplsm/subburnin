@@ -1,9 +1,16 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('subburnin', {
-  processVideo(filePath, onProgress) {
+  processVideo(filePath, optionsOrOnProgress, maybeOnProgress) {
+    const onProgress = typeof optionsOrOnProgress === 'function'
+      ? optionsOrOnProgress
+      : maybeOnProgress;
+    const options = typeof optionsOrOnProgress === 'function'
+      ? {}
+      : (optionsOrOnProgress || {});
+
     ipcRenderer.on('progress', (event, data) => onProgress(data));
-    return ipcRenderer.invoke('ipc:process-video', filePath);
+    return ipcRenderer.invoke('ipc:process-video', filePath, options);
   },
 
   removeProgressListener() {
@@ -16,6 +23,23 @@ contextBridge.exposeInMainWorld('subburnin', {
 
   setConfig(partial) {
     return ipcRenderer.invoke('ipc:set-config', partial);
+  },
+
+  checkDiarizationRuntime() {
+    return ipcRenderer.invoke('ipc:check-diarization');
+  },
+
+  installDiarizationRuntime(onProgress) {
+    ipcRenderer.on('diarization:install-progress', (event, data) => onProgress(data));
+    return ipcRenderer.invoke('ipc:install-diarization');
+  },
+
+  removeDiarizationInstallProgressListener() {
+    ipcRenderer.removeAllListeners('diarization:install-progress');
+  },
+
+  cancelDiarizationInstall() {
+    return ipcRenderer.invoke('ipc:cancel-diarization-install');
   },
 
   openOutputDir(filePath) {

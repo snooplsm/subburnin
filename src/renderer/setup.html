@@ -80,6 +80,32 @@
         <button class="step-gear" id="gear-model" title="Use existing model file">⚙</button>
       </div>
 
+      <!-- Diarization runtime (optional) -->
+      <div class="step-row optional" id="row-diarization">
+        <div class="step-icon" id="icon-diarization">⏳</div>
+        <div class="step-info">
+          <div class="step-label">
+            Multi-speaker runtime (optional)
+            <span
+              class="info-badge"
+              data-tooltip="Uses a local diarization model to detect speaker turns in audio. This enables speaker-aware caption styling in preview/export."
+              aria-label="Info about multi-speaker runtime"
+              tabindex="0"
+            >i</span>
+          </div>
+          <div class="step-detail" id="detail-diarization">Detects who is speaking and enables per-speaker styling.</div>
+          <div class="step-actions-inline">
+            <label class="switch-wrap" for="diarization-enabled">
+              <input id="diarization-enabled" type="checkbox" />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Enable</span>
+            </label>
+            <button id="install-diarization-btn" class="mini-btn secondary" type="button">Set up</button>
+            <button id="cancel-diarization-btn" class="mini-btn secondary" type="button" style="display:none">Cancel</button>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <div class="progress-wrap" id="progress-wrap">

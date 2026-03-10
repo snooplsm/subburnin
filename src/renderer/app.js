@@ -28,6 +28,13 @@ const modelStatusText = document.getElementById('model-status-text');
 const downloadModelBtn    = document.getElementById('download-model-btn');
 const cancelDownloadBtn   = document.getElementById('cancel-download-btn');
 const modelDownloadProgress = document.getElementById('model-download-progress');
+const diarizationStatusDot = document.getElementById('diarization-status-dot');
+const diarizationStatusText = document.getElementById('diarization-status-text');
+const setupDiarizationBtn = document.getElementById('setup-diarization-btn');
+const cancelDiarizationSetupBtn = document.getElementById('cancel-diarization-setup-btn');
+const mainDiarizationEnabledToggle = document.getElementById('main-diarization-enabled-toggle');
+const fontIndexStatus = document.getElementById('font-index-status');
+const refreshFontIndexBtn = document.getElementById('refresh-font-index-btn');
 const captionTextColorInput      = document.getElementById('caption-text-color');
 const captionHighlightColorInput = document.getElementById('caption-highlight-color');
 const captionHighlightBgInput    = document.getElementById('caption-highlight-bg');
@@ -287,6 +294,12 @@ function updateFontStatus(text, isError = false) {
   fontFamilyStatus.style.color = isError ? 'var(--error)' : '';
 }
 
+function updateFontIndexStatus(text, isError = false) {
+  if (!fontIndexStatus) return;
+  fontIndexStatus.textContent = text;
+  fontIndexStatus.style.color = isError ? 'var(--error)' : '';
+}
+
 function selectedFontHasGoogleEntry(fontFamily) {
   const normalized = normalizeFontName(fontFamily).toLowerCase();
   return googleFontVariantsByFamily.has(normalized);
@@ -405,11 +418,13 @@ async function loadFontSources(forceRefresh = false) {
     const date = index.fetchedAt
       ? new Date(index.fetchedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
       : 'unknown';
-    updateFontStatus(`Default: Roboto. Google index: ${googleFontFamilies.length} fonts (updated ${date}).`);
+    updateFontStatus('');
+    updateFontIndexStatus(`${googleFontFamilies.length} fonts (updated ${date})`);
   } catch (err) {
     googleFontFamilies = ['Roboto'];
     downloadedFontFamilies = [];
-    updateFontStatus(`Could not load Google index: ${err.message}`, true);
+    updateFontStatus('');
+    updateFontIndexStatus(`Could not load index: ${err.message}`, true);
   }
 
   renderFontSuggestions();
@@ -442,6 +457,7 @@ const STEPS = ['extracting', 'transcribing', 'converting', 'burning'];
 let currentOutputPath = null;
 let currentTheme = 'dark';
 let isProcessingActive = false;
+let perVideoDiarizationEnabled = true;
 let currentSourceVideoPath = null;
 let currentPreviewVideoPath = null;
 let previewSegments = [];
@@ -451,6 +467,7 @@ let isPreviewSeeking = false;
 let wasPlayingBeforeSeek = false;
 let previewControlsHideTimer = null;
 let previewProxyInFlight = false;
+let diarizationSetupInFlight = false;
 const previewProxyAttempted = new Set();
 const localPreviewFontFaceKeys = new Set();
 let localPreviewFontStyleEl = null;
@@ -1136,7 +1153,7 @@ async function startProcessing(filePath) {
   resetSteps();
   window.subburnin.removeProgressListener();
 
-  window.subburnin.processVideo(filePath, (data) => {
+  window.subburnin.processVideo(filePath, { diarizationEnabled: perVideoDiarizationEnabled }, (data) => {
     updateProgress(data);
   }).then((result) => {
     isProcessingActive = false;
@@ -1435,6 +1452,7 @@ async function openSettings() {
   await loadFontSources();
   populateVariantSelect(captionFontVariantInput.value);
   renderFontSuggestions();
+  await refreshDiarizationSettings();
 
   settingsPanel.classList.add('open');
   overlay.classList.add('visible');
@@ -1445,6 +1463,38 @@ function closeSettings() {
   overlay.classList.remove('visible');
   closeFontMenu();
   if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+  window.subburnin.removeDiarizationInstallProgressListener();
+}
+
+function setDiarizationStatusUi(status, text) {
+  if (!diarizationStatusDot || !diarizationStatusText) return;
+  diarizationStatusDot.className = `model-status-dot ${status}`;
+  diarizationStatusText.textContent = text;
+}
+
+async function refreshDiarizationSettings() {
+  mainDiarizationEnabledToggle.checked = Boolean(perVideoDiarizationEnabled);
+  mainDiarizationEnabledToggle.disabled = false;
+  setupDiarizationBtn.disabled = false;
+  cancelDiarizationSetupBtn.style.display = 'none';
+
+  const status = await window.subburnin.checkDiarizationRuntime();
+  if (status.installed) {
+    const ver = status.pythonVersion ? ` ${status.pythonVersion}` : '';
+    setDiarizationStatusUi('ready', `Found Python${ver} — ready`);
+    setupDiarizationBtn.textContent = 'Re-check';
+    return;
+  }
+
+  if (status.status === 'missing_python') {
+    setDiarizationStatusUi('missing', 'Python 3 not found');
+    setupDiarizationBtn.textContent = 'Retry Check';
+    return;
+  }
+
+  const pyText = status.pythonFound && status.pythonVersion ? `Found Python ${status.pythonVersion}. ` : '';
+  setDiarizationStatusUi('missing', `${pyText}not configured`);
+  setupDiarizationBtn.textContent = 'Set up';
 }
 
 function updateModelStatus(downloaded, size, language) {
@@ -1492,6 +1542,61 @@ cancelDownloadBtn.addEventListener('click', async () => {
   modelDownloadProgress.textContent = 'Cancelling...';
   await window.subburnin.cancelDownload();
   window.subburnin.removeModelProgressListener();
+});
+
+setupDiarizationBtn.addEventListener('click', async () => {
+  if (diarizationSetupInFlight) return;
+  diarizationSetupInFlight = true;
+  setupDiarizationBtn.disabled = true;
+  mainDiarizationEnabledToggle.disabled = true;
+  cancelDiarizationSetupBtn.style.display = '';
+  cancelDiarizationSetupBtn.disabled = false;
+  setDiarizationStatusUi('pending', 'Setting up multi-speaker runtime...');
+
+  window.subburnin.removeDiarizationInstallProgressListener();
+  try {
+    const result = await window.subburnin.installDiarizationRuntime((data) => {
+      const msg = data && (data.message || data.detail || data.stage);
+      if (msg) setDiarizationStatusUi('pending', msg);
+    });
+    if (result && result.cancelled) {
+      setDiarizationStatusUi('missing', 'Setup cancelled');
+    } else if (result && result.success) {
+      const ver = result.pythonVersion ? ` ${result.pythonVersion}` : '';
+      setDiarizationStatusUi('ready', `Found Python${ver} — ready`);
+    } else {
+      setDiarizationStatusUi('missing', result?.error || 'Setup failed');
+    }
+  } catch (err) {
+    setDiarizationStatusUi('missing', err.message || String(err));
+  } finally {
+    diarizationSetupInFlight = false;
+    window.subburnin.removeDiarizationInstallProgressListener();
+    await refreshDiarizationSettings();
+  }
+});
+
+cancelDiarizationSetupBtn.addEventListener('click', async () => {
+  cancelDiarizationSetupBtn.disabled = true;
+  try {
+    await window.subburnin.cancelDiarizationInstall();
+  } catch {}
+});
+
+mainDiarizationEnabledToggle.addEventListener('change', () => {
+  perVideoDiarizationEnabled = Boolean(mainDiarizationEnabledToggle.checked);
+});
+
+refreshFontIndexBtn.addEventListener('click', async () => {
+  refreshFontIndexBtn.disabled = true;
+  updateFontIndexStatus('Refreshing index...');
+  try {
+    await loadFontSources(true);
+  } catch (err) {
+    updateFontIndexStatus(`Could not refresh index: ${err.message}`, true);
+  } finally {
+    refreshFontIndexBtn.disabled = false;
+  }
 });
 
 async function startModelDownload() {
@@ -1653,6 +1758,8 @@ captionFontVariantInput.addEventListener('change', () => {
 
 (async () => {
   const config = await window.subburnin.getConfig();
+  perVideoDiarizationEnabled = Boolean(config.diarization_enabled);
+  mainDiarizationEnabledToggle.checked = perVideoDiarizationEnabled;
   applyCaptionStyleFromConfig(config);
   applyTheme(config.theme || 'dark');
   ensureFontRuntimeState().then(() => {

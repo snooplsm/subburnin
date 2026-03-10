@@ -21,10 +21,28 @@ const {
   listDownloadedFonts,
   downloadGoogleFont
 } = require('./services/fonts');
+const {
+  checkDiarizationRuntime,
+  installDiarizationRuntime
+} = require('./services/diarization');
 
 let activeDownloadController = null;
 let activeSetupController    = null;
 let activeProcessingController = null;
+let activeDiarizationInstallController = null;
+
+function resolveAppIconPath() {
+  const candidates = [
+    // Dev path (repo-root assets)
+    path.resolve(__dirname, '..', 'assets', 'icon.png'),
+    // Bundled path fallback (included under src/**/*)
+    path.resolve(__dirname, 'renderer', 'subburnin.png')
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
 
 // --- Window factories ---
 
@@ -45,8 +63,8 @@ function createMainWindow() {
 
 function createSetupWindow() {
   const win = new BrowserWindow({
-    width: 620,
-    height: 540,
+    width: 760,
+    height: 680,
     resizable: false,
     backgroundColor: '#0f0f1a',
     webPreferences: {
@@ -83,6 +101,13 @@ async function probePermissions() {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin') {
+    const iconPath = resolveAppIconPath();
+    if (iconPath) {
+      app.dock.setIcon(iconPath);
+    }
+  }
+
   await probePermissions();
   const cfg = getConfig();
   if (isSetupComplete(cfg.whisper_model_size, cfg.whisper_language, cfg)) {
@@ -180,6 +205,43 @@ ipcMain.handle('ipc:get-config', () => {
 });
 
 ipcMain.handle('ipc:set-config', (event, partial) => setConfig(partial));
+
+// --- IPC: Diarization runtime ---
+
+ipcMain.handle('ipc:check-diarization', async () => {
+  const status = await checkDiarizationRuntime();
+  setConfig({
+    diarization_runtime_ready: Boolean(status.installed),
+    diarization_runtime_path: status.installed ? status.runtimePath : ''
+  });
+  return status;
+});
+
+ipcMain.handle('ipc:install-diarization', async (event) => {
+  if (activeDiarizationInstallController) activeDiarizationInstallController.abort();
+  activeDiarizationInstallController = new AbortController();
+  const { signal } = activeDiarizationInstallController;
+
+  const send = (data) => event.sender.send('diarization:install-progress', data);
+
+  try {
+    const result = await installDiarizationRuntime(send, signal);
+    activeDiarizationInstallController = null;
+    return result;
+  } catch (err) {
+    activeDiarizationInstallController = null;
+    if (err && err.cancelled) return { success: false, cancelled: true, error: err.message };
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('ipc:cancel-diarization-install', () => {
+  if (activeDiarizationInstallController) {
+    activeDiarizationInstallController.abort();
+    activeDiarizationInstallController = null;
+  }
+  return { cancelled: true };
+});
 
 // --- IPC: Fonts ---
 
@@ -290,7 +352,7 @@ ipcMain.handle('ipc:create-preview-proxy', async (event, videoPath) => {
 
 // --- IPC: Process video ---
 
-ipcMain.handle('ipc:process-video', async (event, videoPath) => {
+ipcMain.handle('ipc:process-video', async (event, videoPath, runtimeOptions = {}) => {
   if (activeProcessingController) activeProcessingController.abort();
   activeProcessingController = new AbortController();
   const { signal } = activeProcessingController;
@@ -302,6 +364,9 @@ ipcMain.handle('ipc:process-video', async (event, videoPath) => {
 
   try {
     const config = getConfig();
+    const perVideoDiarizationEnabled = typeof runtimeOptions.diarizationEnabled === 'boolean'
+      ? runtimeOptions.diarizationEnabled
+      : Boolean(config.diarization_enabled);
 
     const videoDir = path.dirname(videoPath);
     const videoExt = path.extname(videoPath);
@@ -365,7 +430,13 @@ ipcMain.handle('ipc:process-video', async (event, videoPath) => {
     sendProgress({ stage: 'burning', percent: 80, message: 'Burning subburnin onto video...' });
     await burnSubBurnIn(videoPath, assPath, outputVideoPath, sendProgress, { fontsDir: FONTS_DIR, signal });
 
-    sendProgress({ stage: 'done', percent: 100, message: 'Done!', outputPath: outputVideoPath });
+    sendProgress({
+      stage: 'done',
+      percent: 100,
+      message: 'Done!',
+      outputPath: outputVideoPath,
+      options: { diarizationEnabled: perVideoDiarizationEnabled }
+    });
     activeProcessingController = null;
     return { success: true, outputPath: outputVideoPath };
   } catch (err) {

@@ -6,6 +6,11 @@ const progressFill  = document.getElementById('progress-fill');
 const progressLabel = document.getElementById('progress-label');
 const modelSizeEl   = document.getElementById('setup-model-size');
 const languageEl    = document.getElementById('setup-language');
+const installDiarizationBtn = document.getElementById('install-diarization-btn');
+const cancelDiarizationBtn  = document.getElementById('cancel-diarization-btn');
+const diarizationEnabledToggle = document.getElementById('diarization-enabled');
+
+let diarizationInstallInFlight = false;
 
 // Apply theme from config if available
 (async () => {
@@ -26,7 +31,7 @@ function setStep(step, status, detail) {
   const icon = document.getElementById(`icon-${step}`);
   const det  = document.getElementById(`detail-${step}`);
   if (!row) return;
-  row.className = `step-row ${status}`;
+  row.className = `step-row ${status}${step === 'diarization' ? ' optional' : ''}`;
   const icons = { pending: '⏳', installing: '🔄', downloading: '🔄', done: '✓', error: '❌' };
   if (icon) icon.textContent = icons[status] || '⏳';
   if (det && detail) det.textContent = detail;
@@ -37,6 +42,94 @@ function showProgress(percent, label) {
   progressFill.style.width = `${percent}%`;
   progressLabel.textContent = label;
 }
+
+async function refreshDiarizationStatus() {
+  try {
+    const config = await window.setup.getConfig();
+    const status = await window.setup.checkDiarizationRuntime();
+    if (status.installed) {
+      const py = status.pythonVersion ? ` (Python ${status.pythonVersion})` : '';
+      setStep('diarization', 'done', `Found${py} · runtime ready`);
+      diarizationEnabledToggle.disabled = false;
+      diarizationEnabledToggle.checked = Boolean(config.diarization_enabled);
+      installDiarizationBtn.textContent = 'Re-check';
+      installDiarizationBtn.disabled = false;
+      cancelDiarizationBtn.style.display = 'none';
+      return;
+    }
+
+    diarizationEnabledToggle.checked = Boolean(config.diarization_enabled);
+    diarizationEnabledToggle.disabled = true;
+
+    if (status.status === 'missing_python') {
+      setStep('diarization', 'error', 'Python 3 not found. Install Python to enable diarization.');
+      installDiarizationBtn.textContent = 'Retry Check';
+    } else {
+      const py = status.pythonFound && status.pythonVersion ? `Found Python ${status.pythonVersion}. ` : '';
+      setStep('diarization', 'pending', `${py}Click Set up to configure runtime.`);
+      installDiarizationBtn.textContent = 'Set up';
+    }
+    installDiarizationBtn.disabled = false;
+    cancelDiarizationBtn.style.display = 'none';
+  } catch (err) {
+    setStep('diarization', 'error', `Status check failed: ${err.message}`);
+    installDiarizationBtn.textContent = 'Retry Check';
+    installDiarizationBtn.disabled = false;
+    cancelDiarizationBtn.style.display = 'none';
+  }
+}
+
+installDiarizationBtn.addEventListener('click', async () => {
+  if (diarizationInstallInFlight) return;
+  diarizationInstallInFlight = true;
+  installDiarizationBtn.disabled = true;
+  diarizationEnabledToggle.disabled = true;
+  cancelDiarizationBtn.style.display = '';
+  cancelDiarizationBtn.disabled = false;
+  setStep('diarization', 'installing', 'Setting up multi-speaker runtime...');
+
+  window.setup.removeDiarizationInstallProgressListener();
+  try {
+    const result = await window.setup.installDiarizationRuntime((data) => {
+      const msg = data && (data.message || data.detail || data.stage);
+      if (msg) setStep('diarization', 'installing', msg);
+    });
+
+    if (result && result.cancelled) {
+      setStep('diarization', 'pending', 'Setup cancelled.');
+    } else if (result && result.success) {
+      const py = result.pythonVersion ? `Python ${result.pythonVersion}` : 'Python';
+      setStep('diarization', 'done', `Found ${py} · runtime ready`);
+    } else {
+      setStep('diarization', 'error', result?.error || 'Setup failed.');
+    }
+  } catch (err) {
+    setStep('diarization', 'error', err.message || String(err));
+  } finally {
+    diarizationInstallInFlight = false;
+    window.setup.removeDiarizationInstallProgressListener();
+    installDiarizationBtn.disabled = false;
+    cancelDiarizationBtn.style.display = 'none';
+    await refreshDiarizationStatus();
+  }
+});
+
+cancelDiarizationBtn.addEventListener('click', async () => {
+  cancelDiarizationBtn.disabled = true;
+  try {
+    await window.setup.cancelDiarizationInstall();
+  } catch {}
+});
+
+diarizationEnabledToggle.addEventListener('change', async () => {
+  const enabled = Boolean(diarizationEnabledToggle.checked);
+  try {
+    await window.setup.setConfig({ diarization_enabled: enabled });
+  } catch (err) {
+    diarizationEnabledToggle.checked = !enabled;
+    setStep('diarization', 'error', `Could not save toggle: ${err.message || String(err)}`);
+  }
+});
 
 // ── Gear + path-row logic ─────────────────────────────────────
 
@@ -176,3 +269,5 @@ startBtn.addEventListener('click', async () => {
     startBtn.textContent = 'Retry';
   }
 });
+
+refreshDiarizationStatus();
