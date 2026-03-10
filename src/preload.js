@@ -18,6 +18,23 @@ contextBridge.exposeInMainWorld('subburnin', {
     return ipcRenderer.invoke('ipc:set-config', partial);
   },
 
+  checkDiarizationRuntime() {
+    return ipcRenderer.invoke('ipc:check-diarization');
+  },
+
+  installDiarizationRuntime(onProgress) {
+    ipcRenderer.on('diarization:install-progress', (event, data) => onProgress(data));
+    return ipcRenderer.invoke('ipc:install-diarization');
+  },
+
+  removeDiarizationInstallProgressListener() {
+    ipcRenderer.removeAllListeners('diarization:install-progress');
+  },
+
+  cancelDiarizationInstall() {
+    return ipcRenderer.invoke('ipc:cancel-diarization-install');
+  },
+
   openOutputDir(filePath) {
     return ipcRenderer.invoke('ipc:open-output-dir', filePath);
   },

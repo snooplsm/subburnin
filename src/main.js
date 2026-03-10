@@ -21,10 +21,15 @@ const {
   listDownloadedFonts,
   downloadGoogleFont
 } = require('./services/fonts');
+const {
+  checkDiarizationRuntime,
+  installDiarizationRuntime
+} = require('./services/diarization');
 
 let activeDownloadController = null;
 let activeSetupController    = null;
 let activeProcessingController = null;
+let activeDiarizationInstallController = null;
 
 // --- Window factories ---
 
@@ -180,6 +185,43 @@ ipcMain.handle('ipc:get-config', () => {
 });
 
 ipcMain.handle('ipc:set-config', (event, partial) => setConfig(partial));
+
+// --- IPC: Diarization runtime ---
+
+ipcMain.handle('ipc:check-diarization', async () => {
+  const status = await checkDiarizationRuntime();
+  setConfig({
+    diarization_runtime_ready: Boolean(status.installed),
+    diarization_runtime_path: status.installed ? status.runtimePath : ''
+  });
+  return status;
+});
+
+ipcMain.handle('ipc:install-diarization', async (event) => {
+  if (activeDiarizationInstallController) activeDiarizationInstallController.abort();
+  activeDiarizationInstallController = new AbortController();
+  const { signal } = activeDiarizationInstallController;
+
+  const send = (data) => event.sender.send('diarization:install-progress', data);
+
+  try {
+    const result = await installDiarizationRuntime(send, signal);
+    activeDiarizationInstallController = null;
+    return result;
+  } catch (err) {
+    activeDiarizationInstallController = null;
+    if (err && err.cancelled) return { success: false, cancelled: true, error: err.message };
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('ipc:cancel-diarization-install', () => {
+  if (activeDiarizationInstallController) {
+    activeDiarizationInstallController.abort();
+    activeDiarizationInstallController = null;
+  }
+  return { cancelled: true };
+});
 
 // --- IPC: Fonts ---
 
