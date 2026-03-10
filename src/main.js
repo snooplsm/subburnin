@@ -23,7 +23,8 @@ const {
 } = require('./services/fonts');
 const {
   checkDiarizationRuntime,
-  installDiarizationRuntime
+  installDiarizationRuntime,
+  runDiarization
 } = require('./services/diarization');
 
 let activeDownloadController = null;
@@ -399,6 +400,50 @@ ipcMain.handle('ipc:process-video', async (event, videoPath, runtimeOptions = {}
       }
     });
 
+    let diarization = null;
+    if (perVideoDiarizationEnabled) {
+      sendProgress({
+        stage: 'transcribing',
+        percent: 60,
+        message: 'Detecting speakers (multi-speaker)...'
+      });
+      try {
+        const diarizationResult = await runDiarization(wavPath, tmpDir, {
+          signal,
+          onProgress: (d) => {
+            if (d && d.detail) {
+              sendProgress({
+                stage: 'transcribing',
+                percent: 62,
+                message: 'Detecting speakers...',
+                diarization: { detail: d.detail }
+              });
+            }
+          }
+        });
+        diarization = {
+          enabled: true,
+          segments: diarizationResult.segments
+        };
+        sendProgress({
+          stage: 'transcribing',
+          percent: 64,
+          message: `Speaker detection ready (${diarizationResult.segments.length} segments).`,
+          diarization
+        });
+      } catch (err) {
+        sendProgress({
+          stage: 'transcribing',
+          percent: 64,
+          message: 'Continuing without multi-speaker detection.',
+          warning: {
+            type: 'diarization',
+            message: err.message
+          }
+        });
+      }
+    }
+
     // Step 3: Convert segments → karaoke ASS
     sendProgress({ stage: 'converting', percent: 70, message: 'Converting subtitles...' });
     const assContent = segmentsToAss(segments, {
@@ -435,10 +480,11 @@ ipcMain.handle('ipc:process-video', async (event, videoPath, runtimeOptions = {}
       percent: 100,
       message: 'Done!',
       outputPath: outputVideoPath,
-      options: { diarizationEnabled: perVideoDiarizationEnabled }
+      options: { diarizationEnabled: perVideoDiarizationEnabled },
+      diarization
     });
     activeProcessingController = null;
-    return { success: true, outputPath: outputVideoPath };
+    return { success: true, outputPath: outputVideoPath, diarization };
   } catch (err) {
     if (err && err.cancelled) {
       sendProgress({ stage: 'cancelled', message: 'Processing cancelled.' });
